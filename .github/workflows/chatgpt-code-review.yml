@@ -22,7 +22,8 @@ jobs:
         node-version: '16'
 
     - name: Install Dependencies
-      run: npm install openai
+      run: |
+        npm install openai @octokit/rest
 
     - name: Fetch PR Diff
       id: get_diff
@@ -33,6 +34,7 @@ jobs:
     - name: Run ChatGPT Review and Post Inline Comments
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         # Create the script
         echo "const fs = require('fs');

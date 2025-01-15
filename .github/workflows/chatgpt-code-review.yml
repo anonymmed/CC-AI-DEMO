@@ -64,7 +64,8 @@ jobs:
               const removedLines = lines.filter(line => line.startsWith('-')).map(line => line.slice(1));
               const addedLines = lines.filter(line => line.startsWith('+')).map(line => line.slice(1));
 
-              const filePath = diff.match(/a\\/([\\w\\d_./]+)/)?.[1];
+              const filePathMatch = diff.match(/a\\/([\\w\\d_./]+)/);
+              const filePath = filePathMatch ? filePathMatch[1] : null;
 
               return { filePath, removedStart, addedStart, removedLines, addedLines };
             });
@@ -72,6 +73,8 @@ jobs:
             console.log('Parsed changes:', changes);
 
             for (const { filePath, removedLines, addedLines, addedStart } of changes) {
+              if (!filePath) continue;
+
               const prompt = `
                 Review the following change in the file \`${filePath}\`:
                 Removed lines:

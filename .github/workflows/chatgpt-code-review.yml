@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -87,11 +87,13 @@ jobs:
                   };
                   feedbacks.push(feedback);
                 } else {
-                  console.warn(`Invalid response for: ${filePath}`);
-                  console.warn(`Response structure: ${JSON.stringify(response, null, 2)}`);
+                  throw new Error(`Unexpected API response: ${JSON.stringify(response, null, 2)}`);
                 }
-              } catch (err) {
-                console.error(`Error while generating feedback for ${filePath}: ${err.message}`);
+              } catch (apiError) {
+                console.error(`Error while generating feedback for ${filePath}: ${apiError.message}`);
+                if (apiError.response) {
+                  console.error('API response:', JSON.stringify(apiError.response.data, null, 2));
+                }
               }
             }
 

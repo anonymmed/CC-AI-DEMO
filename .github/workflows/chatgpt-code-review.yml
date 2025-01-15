@@ -58,7 +58,7 @@ jobs:
               return { filePath, addedStart, addedLines };
             }).filter(change => change.filePath && change.addedLines.length > 0);
 
-            console.log('Parsed changes:', changes);
+            // console.log('Parsed changes:', changes);
 
             const feedbacks = [];
 
@@ -70,12 +70,15 @@ jobs:
                 Provide feedback and suggestions for improvements, considering coding standards and logic.
               `;
 
-              console.log('Generated prompt:', prompt);
+              const maxTokens = Math.max(1000 - Math.ceil(prompt.length / 4), 50); // Dynamic max_tokens calculation
+
+              // console.log('Generated prompt:', prompt);
+              console.log(`Dynamic max_tokens: ${maxTokens}`);
 
               const response = await openai.chat.completions.create({
                 model: 'gpt-4',
                 messages: [{ role: 'user', content: prompt }],
-                max_tokens: 500,
+                max_tokens: maxTokens,
                 n: 1,
               });
 

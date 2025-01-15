@@ -1,4 +1,4 @@
-name: ChatGPT Code Review
+name: ChatGPT Code Review with Inline Comments
 
 on:
   pull_request:
@@ -19,10 +19,10 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '16' # Ensure compatibility with the OpenAI library
+        node-version: '16'
 
-    - name: Install openai library
-      run: npm install openai@latest
+    - name: Install Dependencies
+      run: npm install openai
 
     - name: Fetch PR Diff
       id: get_diff
@@ -30,17 +30,20 @@ jobs:
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
 
-    - name: Run ChatGPT Review
+    - name: Run ChatGPT Review and Post Inline Comments
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       run: |
-        # Create the review script
+        # Create the script
         echo "const fs = require('fs');
         const { OpenAI } = require('openai');
+        const { Octokit } = require('@octokit/rest');
 
         const openai = new OpenAI({
           apiKey: process.env.OPENAI_API_KEY,
         });
+
+        const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
         async function reviewCode() {
           try {
@@ -55,24 +58,59 @@ jobs:
               Diff:
               \${diff}
 
-              Provide a summary of violations and suggestions for improvements.
+              Provide feedback with line numbers for each violation.
             \`;
 
             const response = await openai.chat.completions.create({
               model: 'gpt-4',
               messages: [{ role: 'user', content: prompt }],
-              max_tokens: 500,
+              max_tokens: 1000,
             });
 
-            const feedback = response.choices[0].message.content;
-            console.log('ChatGPT Review Response:');
+            const feedback = response.data.choices[0].message.content;
+            console.log('ChatGPT Feedback:');
             console.log(feedback);
 
-            // Save feedback to a file
-            fs.writeFileSync('chatgpt_response.txt', feedback);
+            const comments = parseFeedback(feedback, diff);
+            await postComments(comments);
           } catch (error) {
             console.error('Error during ChatGPT review:', error);
             process.exit(1);
+          }
+        }
+
+        function parseFeedback(feedback, diff) {
+          const lines = diff.split('\\n');
+          const comments = [];
+
+          // Parse GPT feedback and associate it with diff lines
+          const feedbackLines = feedback.split('\\n').filter(line => line.trim() !== '');
+          feedbackLines.forEach(fb => {
+            const match = fb.match(/line (\\d+): (.*)/i);
+            if (match) {
+              const lineNumber = parseInt(match[1], 10);
+              const comment = match[2];
+              comments.push({ line: lineNumber, body: comment });
+            }
+          });
+
+          return comments;
+        }
+
+        async function postComments(comments) {
+          const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+          const pullNumber = parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10);
+
+          for (const comment of comments) {
+            await octokit.pulls.createReviewComment({
+              owner,
+              repo,
+              pull_number: pullNumber,
+              body: comment.body,
+              commit_id: process.env.GITHUB_SHA,
+              path: comment.path,
+              line: comment.line,
+            });
           }
         }
 
@@ -80,16 +118,3 @@ jobs:
 
         # Run the review script
         node review.js
-
-    - name: Post Comments
-      uses: actions/github-script@v6
-      with:
-        script: |
-          const fs = require('fs');
-          const feedback = fs.readFileSync('chatgpt_response.txt', 'utf8');
-          github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: context.payload.pull_request.number,
-            body: feedback,
-          });

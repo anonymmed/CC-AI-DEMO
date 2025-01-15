@@ -1,4 +1,4 @@
-name: ChatGPT Inline Review with Context
+name: ChatGPT Inline Code Review
 
 on:
   pull_request:
@@ -22,8 +22,7 @@ jobs:
         node-version: '16'
 
     - name: Install Dependencies
-      run: |
-        npm install openai @octokit/rest@18.12.0
+      run: npm install openai @octokit/rest@18.12.0
 
     - name: Fetch PR Diff
       id: get_diff
@@ -31,11 +30,12 @@ jobs:
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
 
-    - name: Run ChatGPT Review
+    - name: Run ChatGPT Inline Review
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        # Create the review script
         cat <<'EOF' > review.js
         const fs = require('fs');
         const { OpenAI } = require('openai');
@@ -47,42 +47,36 @@ jobs:
 
         const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-        async function parseDiffAndReview() {
+        async function reviewDiff() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const pull_number = parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10);
             const commit_id = process.env.GITHUB_SHA;
 
-            // Parse the diff
-            const changes = diff.split('@@').slice(1).map(change => {
-              const [header, ...lines] = change.split('\n');
-              const match = header.match(/\\-(\\d+),(\\d+) \\+(\\d+),(\\d+)/); // Match line ranges
-              const removedStart = match ? parseInt(match[1], 10) : null;
-              const addedStart = match ? parseInt(match[3], 10) : null;
-
-              const removedLines = lines.filter(line => line.startsWith('-')).map(line => line.slice(1));
-              const addedLines = lines.filter(line => line.startsWith('+')).map(line => line.slice(1));
-
-              const filePathMatch = diff.match(/a\/([\w\d_./]+)/);
+            // Parse the diff into file changes
+            const changes = diff.split('diff --git').slice(1).map(change => {
+              const lines = change.split('\n');
+              const filePathMatch = lines[0].match(/b\/([\w\d_./]+)/); // Extract updated file path
               const filePath = filePathMatch ? filePathMatch[1] : null;
 
-              return { filePath, removedStart, addedStart, removedLines, addedLines };
-            });
+              const header = lines.find(line => line.startsWith('@@'));
+              const lineMatch = header ? header.match(/\+(\d+)/) : null;
+              const addedStart = lineMatch ? parseInt(lineMatch[1], 10) : null;
+
+              const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));
+
+              return { filePath, addedStart, addedLines };
+            }).filter(change => change.filePath && change.addedLines.length > 0);
 
             console.log('Parsed changes:', changes);
 
-            for (const { filePath, removedLines, addedLines, addedStart } of changes) {
-              if (!filePath) continue;
-
+            for (const { filePath, addedStart, addedLines } of changes) {
               const prompt = `
-                Review the following change in the file \`${filePath}\`:
-                Removed lines:
-                ${removedLines.join('\n')}
-                Added lines:
+                Review the following changes in the file \`${filePath}\`:
                 ${addedLines.join('\n')}
-
-                Provide feedback ensuring the added lines align with the removed lines and the overall code logic.
+                
+                Provide feedback and suggestions for improvements, considering the coding standards and logic.
               `;
 
               console.log('Generated prompt:', prompt);
@@ -93,6 +87,11 @@ jobs:
                 max_tokens: 500,
               });
 
+              if (!response || !response.data || !response.data.choices || response.data.choices.length === 0) {
+                console.error('Invalid or empty response from OpenAI API:', response);
+                continue;
+              }
+
               const feedback = response.data.choices[0].message.content;
 
               console.log('Posting inline comment:', {
@@ -101,7 +100,7 @@ jobs:
                 feedback,
               });
 
-              // Post the comment for the first added line
+              // Post inline comments for each change
               await octokit.pulls.createReviewComment({
                 owner,
                 repo,
@@ -118,7 +117,7 @@ jobs:
           }
         }
 
-        parseDiffAndReview();
+        reviewDiff();
         EOF
 
         node review.js

@@ -36,10 +36,15 @@ jobs:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        # Enable ES Modules by creating a package.json file
+        echo '{
+          "type": "module"
+        }' > package.json
+
         # Create the script
-        echo "const fs = require('fs');
-        const { OpenAI } = require('openai');
-        const { Octokit } = require('@octokit/rest');
+        echo "import fs from 'fs';
+        import { OpenAI } from 'openai';
+        import { Octokit } from '@octokit/rest';
 
         const openai = new OpenAI({
           apiKey: process.env.OPENAI_API_KEY,
@@ -116,7 +121,7 @@ jobs:
           }
         }
 
-        reviewCode();" > review.js
+        reviewCode();" > review.mjs
 
         # Run the review script
-        node review.js
+        node review.mjs

@@ -22,7 +22,8 @@ jobs:
         node-version: '16'
 
     - name: Install Dependencies
-      run: npm install openai @octokit/rest@18.12.0
+      run: |
+        npm install openai @octokit/rest@18.12.0
 
     - name: Fetch PR Diff
       id: get_diff
@@ -35,7 +36,6 @@ jobs:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Create the review script
         cat <<'EOF' > review.js
         const fs = require('fs');
         const { OpenAI } = require('openai');
@@ -54,7 +54,6 @@ jobs:
             const pull_number = parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10);
             const commit_id = process.env.GITHUB_SHA;
 
-            // Parse the diff into file changes
             const changes = diff.split('diff --git').slice(1).map(change => {
               const lines = change.split('\n');
               const filePathMatch = lines[0].match(/b\/([\w\d_./]+)/);
@@ -79,47 +78,39 @@ jobs:
               const prompt = `
                 Review the following changes in the file \`${filePath}\`:
                 ${addedLines.join('\n')}
-                
+
                 Provide feedback and suggestions for improvements, considering the coding standards and logic.
               `;
 
               console.log('Generated prompt:', prompt);
 
-              const promptTokenEstimate = Math.min(prompt.split(/\s+/).length * 2, 4000);
-              const maxTokens = Math.max(1000, 4096 - promptTokenEstimate);
-
               const response = await openai.chat.completions.create({
                 model: 'gpt-4',
                 messages: [{ role: 'user', content: prompt }],
-                max_tokens: maxTokens,
+                max_tokens: 500,
                 n: 1,
               });
 
-              if (!response || !response.data || !response.data.choices || response.data.choices.length === 0 || !response.data.choices[0].message) {
-                console.error('Invalid or empty response from OpenAI API:', JSON.stringify(response, null, 2));
-                continue;
-              }
+              if (response && response.data && response.data.choices && response.data.choices[0]?.message?.content) {
+                const feedback = response.data.choices[0].message.content;
+                console.log('Feedback received:', feedback);
 
-              const feedback = response.data.choices[0].message.content;
-
-              console.log('Posting inline comment:', {
-                filePath,
-                addedStart,
-                feedback,
-              });
-
-              try {
-                await octokit.pulls.createReviewComment({
-                  owner,
-                  repo,
-                  pull_number,
-                  body: feedback,
-                  commit_id,
-                  path: filePath,
-                  line: addedStart,
-                });
-              } catch (err) {
-                console.error(`Failed to post comment for ${filePath}:${addedStart}`, err.message);
+                try {
+                  await octokit.pulls.createReviewComment({
+                    owner,
+                    repo,
+                    pull_number,
+                    body: feedback,
+                    commit_id,
+                    path: filePath,
+                    line: addedStart,
+                  });
+                  console.log(`Comment posted for ${filePath} at line ${addedStart}`);
+                } catch (err) {
+                  console.error(`Failed to post comment for ${filePath}:${addedStart}`, err.message);
+                }
+              } else {
+                console.warn('Invalid or empty response from OpenAI API:', JSON.stringify(response, null, 2));
               }
             }
           } catch (error) {

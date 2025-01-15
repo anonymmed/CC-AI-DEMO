@@ -12,6 +12,15 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16' # Compatible Node.js version for the OpenAI library
+
+    - name: Install Dependencies
+      run: |
+        npm install openai
+
     - name: Fetch PR Diff
       id: get_diff
       run: |
@@ -22,12 +31,8 @@ jobs:
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       run: |
-        # Install dependencies
-        npm install openai
-
-        # Call ChatGPT API
-        node <<EOF
-        const fs = require('fs');
+        # Create the review script
+        echo "const fs = require('fs');
         const { Configuration, OpenAIApi } = require('openai');
 
         const config = new Configuration({
@@ -36,36 +41,43 @@ jobs:
         const openai = new OpenAIApi(config);
 
         async function reviewCode() {
-          const diff = fs.readFileSync('pr_diff.txt', 'utf8');
-          const rules = fs.readFileSync('rules.md', 'utf8');
+          try {
+            const diff = fs.readFileSync('pr_diff.txt', 'utf8');
+            const rules = fs.readFileSync('rules.md', 'utf8');
 
-          const prompt = \`
-            Review the following Pull Request diff against the rules below:
-            Rules:
-            \${rules}
+            const prompt = \`
+              Review the following Pull Request diff against the rules below:
+              Rules:
+              \${rules}
 
-            Diff:
-            \${diff}
+              Diff:
+              \${diff}
 
-            Provide a summary of violations and suggestions for improvements.
-          \`;
+              Provide a summary of violations and suggestions for improvements.
+            \`;
 
-          const response = await openai.createCompletion({
-            model: "gpt-4",
-            prompt: prompt,
-            max_tokens: 500,
-          });
+            const response = await openai.createChatCompletion({
+              model: 'gpt-4',
+              messages: [{ role: 'user', content: prompt }],
+              max_tokens: 500,
+            });
 
-          const feedback = response.data.choices[0].text;
-          console.log("ChatGPT Review Response:");
-          console.log(feedback);
+            const feedback = response.data.choices[0].message.content;
+            console.log('ChatGPT Review Response:');
+            console.log(feedback);
 
-          // Save feedback to a file
-          fs.writeFileSync('chatgpt_response.txt', feedback);
+            // Save feedback to a file
+            fs.writeFileSync('chatgpt_response.txt', feedback);
+          } catch (error) {
+            console.error('Error during ChatGPT review:', error);
+            process.exit(1);
+          }
         }
 
-        reviewCode();
-        EOF
+        reviewCode();" > review.js
+
+        # Run the review script
+        node review.js
 
     - name: Post Comments
       uses: actions/github-script@v6

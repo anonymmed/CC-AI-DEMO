@@ -1,41 +1,68 @@
-- name: Run ChatGPT Review
-env:
-  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-run: |
-  # Enable ES Modules by creating a package.json file
-  echo '{
-    "type": "module"
-  }' > package.json
+name: ChatGPT Code Review with Debugging
 
-  # Create a simple test script
-  echo "import { OpenAI } from 'openai';
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
 
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+permissions:
+  contents: read
+  pull-requests: write
 
-  async function testAPI() {
-    try {
-      const prompt = 'Please summarize this text: Hello, world!';
-      console.log('Sending API request...');
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 100,
-      });
+jobs:
+  code_review:
+    runs-on: ubuntu-latest
 
-      console.log('API Raw Response:', JSON.stringify(response.data, null, 2));
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      if (!response || !response.data || !response.data.choices || response.data.choices.length === 0) {
-        throw new Error('Invalid or empty response from OpenAI API');
-      }
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
 
-      console.log('API Response Content:', response.data.choices[0].message.content);
-    } catch (error) {
-      console.error('Error during API test:', error.message || error);
-      process.exit(1);
-    }
-  }
+    - name: Install Dependencies
+      run: |
+        npm install openai
 
-  testAPI();" > test.mjs
+    - name: Test OpenAI API
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        # Enable ES Modules by creating a package.json file
+        echo '{
+          "type": "module"
+        }' > package.json
 
-  # Run the test script
-  node test.mjs
+        # Create a simple test script
+        echo "import { OpenAI } from 'openai';
+
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+        async function testAPI() {
+          try {
+            const prompt = 'Please summarize this text: Hello, world!';
+            console.log('Sending API request...');
+            const response = await openai.chat.completions.create({
+              model: 'gpt-4',
+              messages: [{ role: 'user', content: prompt }],
+              max_tokens: 100,
+            });
+
+            console.log('API Raw Response:', JSON.stringify(response.data, null, 2));
+
+            if (!response || !response.data || !response.data.choices || response.data.choices.length === 0) {
+              throw new Error('Invalid or empty response from OpenAI API');
+            }
+
+            console.log('API Response Content:', response.data.choices[0].message.content);
+          } catch (error) {
+            console.error('Error during API test:', error.message || error);
+            process.exit(1);
+          }
+        }
+
+        testAPI();" > test.mjs
+
+        # Run the test script
+        node test.mjs

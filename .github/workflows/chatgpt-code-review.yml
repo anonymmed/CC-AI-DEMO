@@ -1,4 +1,4 @@
-name: ChatGPT Code Review with Incremental Updates
+name: ChatGPT Code Review with Inline Comments
 
 on:
   pull_request:
@@ -21,8 +21,9 @@ jobs:
       with:
         node-version: '16' # Ensure compatibility with the OpenAI library
 
-    - name: Install openai library
-      run: npm install openai@latest
+    - name: Install Dependencies
+      run: |
+        npm install openai @octokit/rest@18.12.0
 
     - name: Fetch PR Diff
       id: get_diff

@@ -31,6 +31,7 @@ jobs:
         git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
 
     - name: Generate ChatGPT Feedback
+      id: generate_feedback
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       run: |
@@ -45,36 +46,31 @@ jobs:
         async function generateFeedback() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
-            const rules = fs.readFileSync('rules.md', 'utf8');
 
             const changes = diff.split('diff --git').slice(1).map(change => {
               const lines = change.split('\n');
-              const filePathMatch = lines[0].match(/b\/([\w\d_./]+)/);
+              const filePathMatch = lines[0].match(/b\/(\S+)/);
               const filePath = filePathMatch ? filePathMatch[1] : null;
-
               const header = lines.find(line => line.startsWith('@@'));
               const lineMatch = header ? header.match(/\+(\d+)/) : null;
               const addedStart = lineMatch ? parseInt(lineMatch[1], 10) : null;
-
               const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));
-
               return { filePath, addedStart, addedLines };
             }).filter(change => change.filePath && change.addedLines.length > 0);
 
-            fs.writeFileSync('parsed_changes.json', JSON.stringify(changes));
+            console.log('Parsed changes:', changes);
+
+            const feedbacks = [];
 
             for (const { filePath, addedStart, addedLines } of changes) {
-              if (!filePath || addedLines.length === 0) continue;
-
               const prompt = `
                 Review the following changes in the file \`${filePath}\`:
                 ${addedLines.join('\n')}
 
-                Rules:
-                ${rules}
-
-                Provide feedback and suggestions for improvements, considering the coding standards and logic.
+                Provide feedback and suggestions for improvements, considering coding standards and logic.
               `;
+
+              console.log('Generated prompt:', prompt);
 
               const response = await openai.chat.completions.create({
                 model: 'gpt-4',
@@ -83,12 +79,21 @@ jobs:
                 n: 1,
               });
 
-              const feedback = response.data.choices[0].message.content;
-
-              fs.appendFileSync('feedback.jsonl', JSON.stringify({ filePath, addedStart, feedback }) + '\n');
+              if (response?.data?.choices?.[0]?.message?.content) {
+                const feedback = {
+                  filePath,
+                  line: addedStart,
+                  body: response.data.choices[0].message.content,
+                };
+                feedbacks.push(feedback);
+              } else {
+                console.warn('Invalid response for:', filePath, JSON.stringify(response, null, 2));
+              }
             }
+
+            fs.writeFileSync('feedbacks.json', JSON.stringify(feedbacks, null, 2));
           } catch (error) {
-            console.error('Error during feedback generation:', error.message || error);
+            console.error('Error during feedback generation:', error);
             process.exit(1);
           }
         }
@@ -98,7 +103,7 @@ jobs:
 
         node generate_feedback.js
 
-    - name: Post Comments
+    - name: Post Inline Comments
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -110,27 +115,29 @@ jobs:
 
         async function postComments() {
           try {
-            const comments = fs.readFileSync('feedback.jsonl', 'utf8').trim().split('\n').map(JSON.parse);
+            const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const pull_number = parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10);
 
-            for (const { filePath, addedStart, feedback } of comments) {
+            for (const { filePath, line, body } of feedbacks) {
+              console.log(`Posting comment for ${filePath} at line ${line}`);
+
               try {
                 await octokit.pulls.createReviewComment({
                   owner,
                   repo,
                   pull_number,
-                  body: feedback,
+                  body,
                   path: filePath,
-                  line: addedStart,
+                  line,
                 });
-                console.log(`Comment posted for ${filePath} at line ${addedStart}`);
+                console.log(`Comment posted for ${filePath} at line ${line}`);
               } catch (err) {
-                console.error(`Failed to post comment for ${filePath}:${addedStart}`, err.message);
+                console.error(`Failed to post comment for ${filePath}:${line}`, err.message);
               }
             }
           } catch (error) {
-            console.error('Error during posting comments:', error.message || error);
+            console.error('Error during posting comments:', error);
             process.exit(1);
           }
         }

@@ -105,7 +105,7 @@ jobs:
             }).filter(Boolean);
 
             for (const comment of comments) {
-              console.log('Attempting to post comment with parameters:', {
+              console.log('Posting comment with:', {
                 owner,
                 repo,
                 pull_number,

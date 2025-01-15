@@ -1,4 +1,4 @@
-name: ChatGPT Code Review with Debugging
+name: ChatGPT Code Review Debugging
 
 on:
   pull_request:
@@ -36,7 +36,6 @@ jobs:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Create the review script
         cat <<'EOF' > review.js
         const fs = require('fs');
         const { OpenAI } = require('openai');
@@ -51,7 +50,10 @@ jobs:
         async function reviewCode() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
+            console.log('Diff content:', diff);
+
             const rules = fs.readFileSync('rules.md', 'utf8');
+            console.log('Rules content:', rules);
 
             const prompt = `
               Review the following Pull Request diff against the rules below:
@@ -62,17 +64,19 @@ jobs:
               Provide a summary of violations and suggestions for improvements, and indicate the relevant line numbers.
             `;
 
+            console.log('Generated prompt:', prompt);
+
             const response = await openai.chat.completions.create({
               model: 'gpt-4',
               messages: [{ role: 'user', content: prompt }],
               max_tokens: 1000,
             });
 
-            const feedback = response.choices[0].message.content;
-            console.log('ChatGPT Review Response:');
-            console.log(feedback);
+            console.log('API response:', JSON.stringify(response.data, null, 2));
 
-            // Fetch files in the PR
+            const feedback = response.data.choices[0].message.content;
+            console.log('ChatGPT Review Response:', feedback);
+
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const pull_number = parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10);
             const { data: files } = await octokit.pulls.listFiles({
@@ -81,9 +85,10 @@ jobs:
               pull_number,
             });
 
+            console.log('Files in the PR:', files);
+
             const commit_id = process.env.GITHUB_SHA;
 
-            // Parse feedback into inline comments
             const comments = feedback.split('\\n').map((line) => {
               const match = line.match(/`([^`]+)`.*line (\\d+)/i);
               if (match) {
@@ -91,21 +96,18 @@ jobs:
                 const lineNumber = parseInt(match[2], 10);
                 const body = line;
 
-                // Validate the file path
                 const file = files.find(f => f.filename === path);
                 if (file) {
-                  return {
-                    body,
-                    path: file.filename,
-                    line: lineNumber,
-                  };
+                  return { body, path: file.filename, line: lineNumber };
                 }
               }
               return null;
             }).filter(Boolean);
 
+            console.log('Comments to post:', comments);
+
             for (const comment of comments) {
-              console.log('Posting comment with:', {
+              console.log('Posting comment with parameters:', {
                 owner,
                 repo,
                 pull_number,
@@ -126,7 +128,7 @@ jobs:
                   line: comment.line,
                 });
               } catch (err) {
-                console.error('Failed to post comment:', err.message);
+                console.error('Failed to post comment:', err.message, err.response ? err.response.data : null);
               }
             }
           } catch (error) {
@@ -138,5 +140,4 @@ jobs:
         reviewCode();
         EOF
 
-        # Run the review script
         node review.js

@@ -51,6 +51,7 @@ jobs:
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
             const rules = fs.readFileSync('rules.md', 'utf8');
+
             const prompt = \`
               Review the following Pull Request diff against the rules below:
               Rules:
@@ -59,6 +60,7 @@ jobs:
               \${diff}
               Provide a summary of violations and suggestions for improvements, and indicate the relevant line numbers.
             \`;
+
             const response = await openai.chat.completions.create({
               model: 'gpt-4',
               messages: [{ role: 'user', content: prompt }],
@@ -69,7 +71,7 @@ jobs:
             console.log('ChatGPT Review Response:');
             console.log(feedback);
 
-            // Extract commit ID and path from the PR context
+            // Fetch files in the PR
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const pull_number = parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10);
             const { data: files } = await octokit.pulls.listFiles({
@@ -82,13 +84,14 @@ jobs:
 
             // Parse feedback into inline comments
             const comments = feedback.split('\\n').map((line, index) => {
-              const match = line.match(/line (\\d+): (.+)/i);
+              const match = line.match(/(main\\.cs) line (\\d+): (.+)/i);
               if (match) {
-                const lineNumber = parseInt(match[1], 10);
-                const body = match[2];
+                const path = match[1];
+                const lineNumber = parseInt(match[2], 10);
+                const body = match[3];
 
-                // Find the appropriate file
-                const file = files.find(f => f.filename === 'main.cs'); // Adjust filename if needed
+                // Ensure file exists in the PR
+                const file = files.find(f => f.filename === path);
                 if (file) {
                   return {
                     body,
@@ -102,7 +105,7 @@ jobs:
 
             // Post inline comments
             for (const comment of comments) {
-              console.log(\`Posting comment: \${comment.body} on line \${comment.line}\`);
+              console.log(\`Posting comment: \${comment.body} on file \${comment.path}, line \${comment.line}\`);
               await octokit.pulls.createReviewComment({
                 owner,
                 repo,

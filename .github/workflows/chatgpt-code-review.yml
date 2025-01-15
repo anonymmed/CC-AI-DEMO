@@ -109,6 +109,13 @@ jobs:
 
         node generate_feedback.js
 
+    - name: Verify Token Permissions
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+         curl -H "Authorization: token $GITHUB_TOKEN" \
+            https://api.github.com/repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission
+      
     - name: Post Inline Comments
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

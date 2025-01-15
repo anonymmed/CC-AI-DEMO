@@ -69,26 +69,29 @@ jobs:
               `;
 
               const maxTokens = Math.max(1000 - Math.ceil(prompt.length / 4), 50); // Dynamic max_tokens calculation
-
-              // Dynamic token calculation debug
               console.log(`Dynamic max_tokens: ${maxTokens}`);
 
-              const response = await openai.chat.completions.create({
-                model: 'gpt-4',
-                messages: [{ role: 'user', content: prompt }],
-                max_tokens: maxTokens,
-                n: 1,
-              });
+              try {
+                const response = await openai.chat.completions.create({
+                  model: 'gpt-4',
+                  messages: [{ role: 'user', content: prompt }],
+                  max_tokens: maxTokens,
+                  n: 1,
+                });
 
-              if (response?.data?.choices?.[0]?.message?.content) {
-                const feedback = {
-                  filePath,
-                  line: addedStart,
-                  body: response.data.choices[0].message.content,
-                };
-                feedbacks.push(feedback);
-              } else {
-                console.warn('Invalid response for:', filePath, JSON.stringify(response, null, 2));
+                if (response?.data?.choices?.[0]?.message?.content) {
+                  const feedback = {
+                    filePath,
+                    line: addedStart,
+                    body: response.data.choices[0].message.content,
+                  };
+                  feedbacks.push(feedback);
+                } else {
+                  console.warn(`Invalid response for: ${filePath}`);
+                  console.warn(`Response structure: ${JSON.stringify(response, null, 2)}`);
+                }
+              } catch (err) {
+                console.error(`Error while generating feedback for ${filePath}: ${err.message}`);
               }
             }
 

@@ -36,7 +36,9 @@ jobs:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        echo "const fs = require('fs');
+        # Create the review script
+        cat <<'EOF' > review.js
+        const fs = require('fs');
         const { OpenAI } = require('openai');
         const { Octokit } = require('@octokit/rest');
 
@@ -51,14 +53,14 @@ jobs:
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
             const rules = fs.readFileSync('rules.md', 'utf8');
 
-            const prompt = \`
+            const prompt = `
               Review the following Pull Request diff against the rules below:
               Rules:
-              \${rules}
+              ${rules}
               Diff:
-              \${diff}
+              ${diff}
               Provide a summary of violations and suggestions for improvements, and indicate the relevant line numbers.
-            \`;
+            `;
 
             const response = await openai.chat.completions.create({
               model: 'gpt-4',
@@ -133,7 +135,8 @@ jobs:
           }
         }
 
-        reviewCode();" > review.js
+        reviewCode();
+        EOF
 
         # Run the review script
         node review.js

@@ -1,4 +1,4 @@
-name: ChatGPT Code Review with Inline Comments
+name: ChatGPT Code Review with Debugging
 
 on:
   pull_request:
@@ -36,7 +36,6 @@ jobs:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Create the review script
         echo "const fs = require('fs');
         const { OpenAI } = require('openai');
         const { Octokit } = require('@octokit/rest');
@@ -83,14 +82,14 @@ jobs:
             const commit_id = process.env.GITHUB_SHA;
 
             // Parse feedback into inline comments
-            const comments = feedback.split('\\n').map((line, index) => {
-              const match = line.match(/(main\\.cs) line (\\d+): (.+)/i);
+            const comments = feedback.split('\\n').map((line) => {
+              const match = line.match(/`([^`]+)`.*line (\\d+)/i);
               if (match) {
                 const path = match[1];
                 const lineNumber = parseInt(match[2], 10);
-                const body = match[3];
+                const body = line;
 
-                // Ensure file exists in the PR
+                // Validate the file path
                 const file = files.find(f => f.filename === path);
                 if (file) {
                   return {
@@ -103,18 +102,30 @@ jobs:
               return null;
             }).filter(Boolean);
 
-            // Post inline comments
             for (const comment of comments) {
-              console.log(\`Posting comment: \${comment.body} on file \${comment.path}, line \${comment.line}\`);
-              await octokit.pulls.createReviewComment({
+              console.log('Attempting to post comment with parameters:', {
                 owner,
                 repo,
                 pull_number,
-                body: comment.body,
                 commit_id,
                 path: comment.path,
                 line: comment.line,
+                body: comment.body,
               });
+
+              try {
+                await octokit.pulls.createReviewComment({
+                  owner,
+                  repo,
+                  pull_number,
+                  body: comment.body,
+                  commit_id,
+                  path: comment.path,
+                  line: comment.line,
+                });
+              } catch (err) {
+                console.error('Failed to post comment:', err.message);
+              }
             }
           } catch (error) {
             console.error('Error during ChatGPT review:', error.message || error);

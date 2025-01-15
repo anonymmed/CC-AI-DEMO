@@ -85,14 +85,14 @@ jobs:
                 const feedback = {
                   filePath,
                   line: addedStart,
-                  body: response.data.choices[0].message.content,
+                  body: response.choices[0].message.content,
                 };
 
                 feedbacks.push(feedback);
               } catch (apiError) {
                 console.error(`Error while generating feedback for ${filePath}:`, apiError.message);
                 if (apiError.response) {
-                  console.error('API response:', apiError.response.data);
+                  console.error('API response:', apiError.response);
                 }
               }
             }

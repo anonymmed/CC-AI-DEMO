@@ -1,0 +1,81 @@
+name: ChatGPT Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  code_review:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Fetch PR Diff
+      id: get_diff
+      run: |
+        git fetch origin ${{ github.event.pull_request.base.ref }}
+        git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
+
+    - name: Run ChatGPT Review
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        # Install dependencies
+        npm install openai
+
+        # Call ChatGPT API
+        node <<EOF
+        const fs = require('fs');
+        const { Configuration, OpenAIApi } = require('openai');
+
+        const config = new Configuration({
+          apiKey: process.env.OPENAI_API_KEY,
+        });
+        const openai = new OpenAIApi(config);
+
+        async function reviewCode() {
+          const diff = fs.readFileSync('pr_diff.txt', 'utf8');
+          const rules = fs.readFileSync('rules.md', 'utf8');
+
+          const prompt = \`
+            Review the following Pull Request diff against the rules below:
+            Rules:
+            \${rules}
+
+            Diff:
+            \${diff}
+
+            Provide a summary of violations and suggestions for improvements.
+          \`;
+
+          const response = await openai.createCompletion({
+            model: "gpt-4",
+            prompt: prompt,
+            max_tokens: 500,
+          });
+
+          const feedback = response.data.choices[0].text;
+          console.log("ChatGPT Review Response:");
+          console.log(feedback);
+
+          // Save feedback to a file
+          fs.writeFileSync('chatgpt_response.txt', feedback);
+        }
+
+        reviewCode();
+        EOF
+
+    - name: Post Comments
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const feedback = fs.readFileSync('chatgpt_response.txt', 'utf8');
+          github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.payload.pull_request.number,
+            body: feedback,
+          });

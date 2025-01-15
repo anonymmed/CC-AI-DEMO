@@ -5,9 +5,8 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
-  repository-projects: write
 
 jobs:
   code_review:
@@ -20,7 +19,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '16' # Ensure compatibility with the OpenAI library
+        node-version: '16'
 
     - name: Install Dependencies
       run: |
@@ -70,21 +69,46 @@ jobs:
             console.log('ChatGPT Review Response:');
             console.log(feedback);
 
-            // Parse feedback for inline comments (dummy logic for now)
-            const comments = feedback.split('\\n').map((line, index) => ({
-              body: line,
-              line: index + 1, // Replace this with actual line parsing logic
-              path: 'file.txt', // Replace with actual file path from diff
-            }));
+            // Extract commit ID and path from the PR context
+            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+            const pull_number = parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10);
+            const { data: files } = await octokit.pulls.listFiles({
+              owner,
+              repo,
+              pull_number,
+            });
 
+            const commit_id = process.env.GITHUB_SHA;
+
+            // Parse feedback into inline comments
+            const comments = feedback.split('\\n').map((line, index) => {
+              const match = line.match(/line (\\d+): (.+)/i);
+              if (match) {
+                const lineNumber = parseInt(match[1], 10);
+                const body = match[2];
+
+                // Find the appropriate file
+                const file = files.find(f => f.filename === 'main.cs'); // Adjust filename if needed
+                if (file) {
+                  return {
+                    body,
+                    path: file.filename,
+                    line: lineNumber,
+                  };
+                }
+              }
+              return null;
+            }).filter(Boolean);
+
+            // Post inline comments
             for (const comment of comments) {
-              console.log(\`Posting comment: \${comment.body}\`);
+              console.log(\`Posting comment: \${comment.body} on line \${comment.line}\`);
               await octokit.pulls.createReviewComment({
-                owner: process.env.GITHUB_REPOSITORY.split('/')[0],
-                repo: process.env.GITHUB_REPOSITORY.split('/')[1],
-                pull_number: parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10),
+                owner,
+                repo,
+                pull_number,
                 body: comment.body,
-                commit_id: process.env.GITHUB_SHA,
+                commit_id,
                 path: comment.path,
                 line: comment.line,
               });

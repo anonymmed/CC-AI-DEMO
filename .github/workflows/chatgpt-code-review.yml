@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
 
 jobs:
@@ -72,27 +72,27 @@ jobs:
               console.log(`Dynamic max_tokens: ${maxTokens}`);
 
               try {
-                const response = await openai.chat.completions.create({
+                const rawResponse = await openai.chat.completions.create({
                   model: 'gpt-4',
                   messages: [{ role: 'user', content: prompt }],
                   max_tokens: maxTokens,
                   n: 1,
                 });
 
-                if (response?.data?.choices?.[0]?.message?.content) {
-                  const feedback = {
-                    filePath,
-                    line: addedStart,
-                    body: response.data.choices[0].message.content,
-                  };
-                  feedbacks.push(feedback);
-                } else {
-                  throw new Error(`Unexpected API response: ${JSON.stringify(response, null, 2)}`);
-                }
+                // Parse the response if it's not already parsed
+                const response = typeof rawResponse === 'string' ? JSON.parse(rawResponse) : rawResponse;
+
+                const feedback = {
+                  filePath,
+                  line: addedStart,
+                  body: response.data.choices[0].message.content,
+                };
+
+                feedbacks.push(feedback);
               } catch (apiError) {
-                console.error(`Error while generating feedback for ${filePath}: ${apiError.message}`);
+                console.error(`Error while generating feedback for ${filePath}:`, apiError.message);
                 if (apiError.response) {
-                  console.error('API response:', JSON.stringify(apiError.response.data, null, 2));
+                  console.error('API response:', apiError.response.data);
                 }
               }
             }

@@ -57,7 +57,7 @@ jobs:
             // Parse the diff into file changes
             const changes = diff.split('diff --git').slice(1).map(change => {
               const lines = change.split('\n');
-              const filePathMatch = lines[0].match(/b\/([\w\d_./]+)/); // Extract updated file path
+              const filePathMatch = lines[0].match(/b\/([\w\d_./]+)/);
               const filePath = filePathMatch ? filePathMatch[1] : null;
 
               const header = lines.find(line => line.startsWith('@@'));
@@ -73,7 +73,6 @@ jobs:
 
             for (const { filePath, addedStart, addedLines } of changes) {
               if (!filePath || addedLines.length === 0) {
-                console.log(`Skipping empty or invalid change for file: ${filePath}`);
                 continue;
               }
 
@@ -86,7 +85,6 @@ jobs:
 
               console.log('Generated prompt:', prompt);
 
-              // Dynamically calculate max_tokens
               const promptTokenEstimate = Math.min(prompt.split(/\s+/).length * 2, 4000);
               const maxTokens = Math.max(1000, 4096 - promptTokenEstimate);
 
@@ -94,10 +92,8 @@ jobs:
                 model: 'gpt-4',
                 messages: [{ role: 'user', content: prompt }],
                 max_tokens: maxTokens,
-                n: 1, // Restrict to a single choice
+                n: 1,
               });
-
-              console.log('Raw API Response:', JSON.stringify(response, null, 2));
 
               if (!response || !response.data || !response.data.choices || response.data.choices.length === 0 || !response.data.choices[0].message) {
                 console.error('Invalid or empty response from OpenAI API:', JSON.stringify(response, null, 2));

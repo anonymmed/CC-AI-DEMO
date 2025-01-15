@@ -22,8 +22,7 @@ jobs:
         node-version: '16'
 
     - name: Install Dependencies
-      run: |
-        npm install openai @octokit/rest@18.12.0
+      run: npm install openai @octokit/rest@18.12.0
 
     - name: Fetch PR Diff
       id: get_diff
@@ -31,28 +30,22 @@ jobs:
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
 
-    - name: Run ChatGPT Inline Review
+    - name: Generate ChatGPT Feedback
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        cat <<'EOF' > review.js
+        cat <<'EOF' > generate_feedback.js
         const fs = require('fs');
         const { OpenAI } = require('openai');
-        const { Octokit } = require('@octokit/rest');
 
         const openai = new OpenAI({
           apiKey: process.env.OPENAI_API_KEY,
         });
 
-        const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-
-        async function reviewDiff() {
+        async function generateFeedback() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
-            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
-            const pull_number = parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10);
-            const commit_id = process.env.GITHUB_SHA;
+            const rules = fs.readFileSync('rules.md', 'utf8');
 
             const changes = diff.split('diff --git').slice(1).map(change => {
               const lines = change.split('\n');
@@ -68,21 +61,20 @@ jobs:
               return { filePath, addedStart, addedLines };
             }).filter(change => change.filePath && change.addedLines.length > 0);
 
-            console.log('Parsed changes:', changes);
+            fs.writeFileSync('parsed_changes.json', JSON.stringify(changes));
 
             for (const { filePath, addedStart, addedLines } of changes) {
-              if (!filePath || addedLines.length === 0) {
-                continue;
-              }
+              if (!filePath || addedLines.length === 0) continue;
 
               const prompt = `
                 Review the following changes in the file \`${filePath}\`:
                 ${addedLines.join('\n')}
 
+                Rules:
+                ${rules}
+
                 Provide feedback and suggestions for improvements, considering the coding standards and logic.
               `;
-
-              console.log('Generated prompt:', prompt);
 
               const response = await openai.chat.completions.create({
                 model: 'gpt-4',
@@ -91,35 +83,59 @@ jobs:
                 n: 1,
               });
 
-              if (response && response.data && response.data.choices && response.data.choices[0]?.message?.content) {
-                const feedback = response.data.choices[0].message.content;
-                console.log('Feedback received:', feedback);
+              const feedback = response.data.choices[0].message.content;
 
-                try {
-                  await octokit.pulls.createReviewComment({
-                    owner,
-                    repo,
-                    pull_number,
-                    body: feedback,
-                    commit_id,
-                    path: filePath,
-                    line: addedStart,
-                  });
-                  console.log(`Comment posted for ${filePath} at line ${addedStart}`);
-                } catch (err) {
-                  console.error(`Failed to post comment for ${filePath}:${addedStart}`, err.message);
-                }
-              } else {
-                console.warn('Invalid or empty response from OpenAI API:', JSON.stringify(response, null, 2));
-              }
+              fs.appendFileSync('feedback.jsonl', JSON.stringify({ filePath, addedStart, feedback }) + '\n');
             }
           } catch (error) {
-            console.error('Error during ChatGPT review:', error.message || error);
+            console.error('Error during feedback generation:', error.message || error);
             process.exit(1);
           }
         }
 
-        reviewDiff();
+        generateFeedback();
         EOF
 
-        node review.js
+        node generate_feedback.js
+
+    - name: Post Comments
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        cat <<'EOF' > post_comments.js
+        const fs = require('fs');
+        const { Octokit } = require('@octokit/rest');
+
+        const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
+        async function postComments() {
+          try {
+            const comments = fs.readFileSync('feedback.jsonl', 'utf8').trim().split('\n').map(JSON.parse);
+            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+            const pull_number = parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10);
+
+            for (const { filePath, addedStart, feedback } of comments) {
+              try {
+                await octokit.pulls.createReviewComment({
+                  owner,
+                  repo,
+                  pull_number,
+                  body: feedback,
+                  path: filePath,
+                  line: addedStart,
+                });
+                console.log(`Comment posted for ${filePath} at line ${addedStart}`);
+              } catch (err) {
+                console.error(`Failed to post comment for ${filePath}:${addedStart}`, err.message);
+              }
+            }
+          } catch (error) {
+            console.error('Error during posting comments:', error.message || error);
+            process.exit(1);
+          }
+        }
+
+        postComments();
+        EOF
+
+        node post_comments.js

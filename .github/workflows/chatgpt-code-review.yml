@@ -58,8 +58,6 @@ jobs:
               return { filePath, addedStart, addedLines };
             }).filter(change => change.filePath && change.addedLines.length > 0);
 
-            // console.log('Parsed changes:', changes);
-
             const feedbacks = [];
 
             for (const { filePath, addedStart, addedLines } of changes) {
@@ -72,7 +70,7 @@ jobs:
 
               const maxTokens = Math.max(1000 - Math.ceil(prompt.length / 4), 50); // Dynamic max_tokens calculation
 
-              // console.log('Generated prompt:', prompt);
+              // Dynamic token calculation debug
               console.log(`Dynamic max_tokens: ${maxTokens}`);
 
               const response = await openai.chat.completions.create({

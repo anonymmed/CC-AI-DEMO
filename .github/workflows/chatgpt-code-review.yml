@@ -1,4 +1,4 @@
-name: ChatGPT Code Review with Debugging
+name: ChatGPT Code Review
 
 on:
   pull_request:
@@ -19,50 +19,65 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '16'
+        node-version: '16' # Ensure compatibility with the OpenAI library
 
-    - name: Install Dependencies
+    - name: Install openai library
+      run: npm install openai@latest
+
+    - name: Fetch PR Diff
+      id: get_diff
       run: |
-        npm install openai
-
-    - name: Test OpenAI API
+        git fetch origin ${{ github.event.pull_request.base.ref }}
+        git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
+    - name: Run ChatGPT Review
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       run: |
-        # Enable ES Modules by creating a package.json file
-        echo '{
-          "type": "module"
-        }' > package.json
-
-        # Create a simple test script
-        echo "import { OpenAI } from 'openai';
-
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-        async function testAPI() {
+        # Create the review script
+        echo "const fs = require('fs');
+        const { OpenAI } = require('openai');
+        const openai = new OpenAI({
+          apiKey: process.env.OPENAI_API_KEY,
+        });
+        async function reviewCode() {
           try {
-            const prompt = 'Please summarize this text: Hello, world!';
-            console.log('Sending API request...');
+            const diff = fs.readFileSync('pr_diff.txt', 'utf8');
+            const rules = fs.readFileSync('rules.md', 'utf8');
+            const prompt = \`
+              Review the following Pull Request diff against the rules below:
+              Rules:
+              \${rules}
+              Diff:
+              \${diff}
+              Provide a summary of violations and suggestions for improvements.
+            \`;
             const response = await openai.chat.completions.create({
               model: 'gpt-4',
               messages: [{ role: 'user', content: prompt }],
-              max_tokens: 100,
+              max_tokens: 500,
             });
-
-            console.log('API Raw Response:', JSON.stringify(response.data, null, 2));
-
-            if (!response || !response.data || !response.data.choices || response.data.choices.length === 0) {
-              throw new Error('Invalid or empty response from OpenAI API');
-            }
-
-            console.log('API Response Content:', response.data.choices[0].message.content);
+            const feedback = response.choices[0].message.content;
+            console.log('ChatGPT Review Response:');
+            console.log(feedback);
+            // Save feedback to a file
+            fs.writeFileSync('chatgpt_response.txt', feedback);
           } catch (error) {
-            console.error('Error during API test:', error.message || error);
+            console.error('Error during ChatGPT review:', error);
             process.exit(1);
           }
         }
-
-        testAPI();" > test.mjs
-
-        # Run the test script
-        node test.mjs
+        reviewCode();" > review.js
+        # Run the review script
+        node review.js
+    - name: Post Comments
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const feedback = fs.readFileSync('chatgpt_response.txt', 'utf8');
+          github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.payload.pull_request.number,
+            body: feedback,
+          });

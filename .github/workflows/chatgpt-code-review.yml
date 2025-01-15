@@ -1,4 +1,4 @@
-name: ChatGPT Code Review Debugging
+name: ChatGPT Inline Review with Context
 
 on:
   pull_request:
@@ -47,89 +47,67 @@ jobs:
 
         const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-        async function reviewCode() {
+        async function parseDiffAndReview() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
-            console.log('Diff content:', diff);
-
-            const rules = fs.readFileSync('rules.md', 'utf8');
-            console.log('Rules content:', rules);
-
-            const prompt = `
-              Review the following Pull Request diff against the rules below:
-              Rules:
-              ${rules}
-              Diff:
-              ${diff}
-              Provide a summary of violations and suggestions for improvements, and indicate the relevant line numbers.
-            `;
-
-            console.log('Generated prompt:', prompt);
-
-            const response = await openai.chat.completions.create({
-              model: 'gpt-4',
-              messages: [{ role: 'user', content: prompt }],
-              max_tokens: 1000,
-            });
-
-            console.log('API response:', JSON.stringify(response.data, null, 2));
-
-            const feedback = response.data.choices[0].message.content;
-            console.log('ChatGPT Review Response:', feedback);
-
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const pull_number = parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10);
-            const { data: files } = await octokit.pulls.listFiles({
-              owner,
-              repo,
-              pull_number,
-            });
-
-            console.log('Files in the PR:', files);
-
             const commit_id = process.env.GITHUB_SHA;
 
-            const comments = feedback.split('\\n').map((line) => {
-              const match = line.match(/`([^`]+)`.*line (\\d+)/i);
-              if (match) {
-                const path = match[1];
-                const lineNumber = parseInt(match[2], 10);
-                const body = line;
+            // Parse the diff
+            const changes = diff.split('@@').slice(1).map(change => {
+              const [header, ...lines] = change.split('\n');
+              const match = header.match(/\\-(\\d+),(\\d+) \\+(\\d+),(\\d+)/); // Match line ranges
+              const removedStart = match ? parseInt(match[1], 10) : null;
+              const addedStart = match ? parseInt(match[3], 10) : null;
 
-                const file = files.find(f => f.filename === path);
-                if (file) {
-                  return { body, path: file.filename, line: lineNumber };
-                }
-              }
-              return null;
-            }).filter(Boolean);
+              const removedLines = lines.filter(line => line.startsWith('-')).map(line => line.slice(1));
+              const addedLines = lines.filter(line => line.startsWith('+')).map(line => line.slice(1));
 
-            console.log('Comments to post:', comments);
+              const filePath = diff.match(/a\\/([\\w\\d_./]+)/)?.[1];
 
-            for (const comment of comments) {
-              console.log('Posting comment with parameters:', {
+              return { filePath, removedStart, addedStart, removedLines, addedLines };
+            });
+
+            console.log('Parsed changes:', changes);
+
+            for (const { filePath, removedLines, addedLines, addedStart } of changes) {
+              const prompt = `
+                Review the following change in the file \`${filePath}\`:
+                Removed lines:
+                ${removedLines.join('\n')}
+                Added lines:
+                ${addedLines.join('\n')}
+
+                Provide feedback ensuring the added lines align with the removed lines and the overall code logic.
+              `;
+
+              console.log('Generated prompt:', prompt);
+
+              const response = await openai.chat.completions.create({
+                model: 'gpt-4',
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: 500,
+              });
+
+              const feedback = response.data.choices[0].message.content;
+
+              console.log('Posting inline comment:', {
+                filePath,
+                addedStart,
+                feedback,
+              });
+
+              // Post the comment for the first added line
+              await octokit.pulls.createReviewComment({
                 owner,
                 repo,
                 pull_number,
+                body: feedback,
                 commit_id,
-                path: comment.path,
-                line: comment.line,
-                body: comment.body,
+                path: filePath,
+                line: addedStart,
               });
-
-              try {
-                await octokit.pulls.createReviewComment({
-                  owner,
-                  repo,
-                  pull_number,
-                  body: comment.body,
-                  commit_id,
-                  path: comment.path,
-                  line: comment.line,
-                });
-              } catch (err) {
-                console.error('Failed to post comment:', err.message, err.response ? err.response.data : null);
-              }
             }
           } catch (error) {
             console.error('Error during ChatGPT review:', error.message || error);
@@ -137,7 +115,7 @@ jobs:
           }
         }
 
-        reviewCode();
+        parseDiffAndReview();
         EOF
 
         node review.js

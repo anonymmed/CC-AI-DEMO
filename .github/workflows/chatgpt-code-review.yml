@@ -72,6 +72,11 @@ jobs:
             console.log('Parsed changes:', changes);
 
             for (const { filePath, addedStart, addedLines } of changes) {
+              if (!filePath || addedLines.length === 0) {
+                console.log(`Skipping empty or invalid change for file: ${filePath}`);
+                continue;
+              }
+
               const prompt = `
                 Review the following changes in the file \`${filePath}\`:
                 ${addedLines.join('\n')}
@@ -81,14 +86,21 @@ jobs:
 
               console.log('Generated prompt:', prompt);
 
+              // Dynamically calculate max_tokens
+              const promptTokenEstimate = Math.min(prompt.split(/\s+/).length * 2, 4000);
+              const maxTokens = Math.max(1000, 4096 - promptTokenEstimate);
+
               const response = await openai.chat.completions.create({
                 model: 'gpt-4',
                 messages: [{ role: 'user', content: prompt }],
-                max_tokens: 500,
+                max_tokens: maxTokens,
+                n: 1, // Restrict to a single choice
               });
 
-              if (!response || !response.data || !response.data.choices || response.data.choices.length === 0) {
-                console.error('Invalid or empty response from OpenAI API:', response);
+              console.log('Raw API Response:', JSON.stringify(response, null, 2));
+
+              if (!response || !response.data || !response.data.choices || response.data.choices.length === 0 || !response.data.choices[0].message) {
+                console.error('Invalid or empty response from OpenAI API:', JSON.stringify(response, null, 2));
                 continue;
               }
 
@@ -100,16 +112,19 @@ jobs:
                 feedback,
               });
 
-              // Post inline comments for each change
-              await octokit.pulls.createReviewComment({
-                owner,
-                repo,
-                pull_number,
-                body: feedback,
-                commit_id,
-                path: filePath,
-                line: addedStart,
-              });
+              try {
+                await octokit.pulls.createReviewComment({
+                  owner,
+                  repo,
+                  pull_number,
+                  body: feedback,
+                  commit_id,
+                  path: filePath,
+                  line: addedStart,
+                });
+              } catch (err) {
+                console.error(`Failed to post comment for ${filePath}:${addedStart}`, err.message);
+              }
             }
           } catch (error) {
             console.error('Error during ChatGPT review:', error.message || error);

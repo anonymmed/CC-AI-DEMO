@@ -15,7 +15,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '16'
+        node-version: '16' # Ensure compatibility with the OpenAI library
 
     - name: Install openai library
       run: npm install openai@latest
@@ -32,12 +32,11 @@ jobs:
       run: |
         # Create the review script
         echo "const fs = require('fs');
-        const { Configuration, OpenAIApi } = require('openai');
+        const { OpenAI } = require('openai');
 
-        const config = new Configuration({
+        const openai = new OpenAI({
           apiKey: process.env.OPENAI_API_KEY,
         });
-        const openai = new OpenAIApi(config);
 
         async function reviewCode() {
           try {
@@ -55,13 +54,13 @@ jobs:
               Provide a summary of violations and suggestions for improvements.
             \`;
 
-            const response = await openai.createChatCompletion({
+            const response = await openai.chat.completions.create({
               model: 'gpt-4',
               messages: [{ role: 'user', content: prompt }],
               max_tokens: 500,
             });
 
-            const feedback = response.data.choices[0].message.content;
+            const feedback = response.choices[0].message.content;
             console.log('ChatGPT Review Response:');
             console.log(feedback);
 

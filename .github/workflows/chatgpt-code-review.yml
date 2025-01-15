@@ -1,4 +1,4 @@
-name: ChatGPT Code Review
+name: ChatGPT Code Review with Incremental Updates
 
 on:
   pull_request:
@@ -29,16 +29,23 @@ jobs:
       run: |
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
+
     - name: Run ChatGPT Review
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         # Create the review script
         echo "const fs = require('fs');
         const { OpenAI } = require('openai');
+        const { Octokit } = require('@octokit/rest');
+
         const openai = new OpenAI({
           apiKey: process.env.OPENAI_API_KEY,
         });
+
+        const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
         async function reviewCode() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
@@ -49,35 +56,44 @@ jobs:
               \${rules}
               Diff:
               \${diff}
-              Provide a summary of violations and suggestions for improvements.
+              Provide a summary of violations and suggestions for improvements, and indicate the relevant line numbers.
             \`;
             const response = await openai.chat.completions.create({
               model: 'gpt-4',
               messages: [{ role: 'user', content: prompt }],
-              max_tokens: 500,
+              max_tokens: 1000,
             });
+
             const feedback = response.choices[0].message.content;
             console.log('ChatGPT Review Response:');
             console.log(feedback);
-            // Save feedback to a file
-            fs.writeFileSync('chatgpt_response.txt', feedback);
+
+            // Parse feedback for inline comments (dummy logic for now)
+            const comments = feedback.split('\\n').map((line, index) => ({
+              body: line,
+              line: index + 1, // Replace this with actual line parsing logic
+              path: 'file.txt', // Replace with actual file path from diff
+            }));
+
+            for (const comment of comments) {
+              console.log(\`Posting comment: \${comment.body}\`);
+              await octokit.pulls.createReviewComment({
+                owner: process.env.GITHUB_REPOSITORY.split('/')[0],
+                repo: process.env.GITHUB_REPOSITORY.split('/')[1],
+                pull_number: parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10),
+                body: comment.body,
+                commit_id: process.env.GITHUB_SHA,
+                path: comment.path,
+                line: comment.line,
+              });
+            }
           } catch (error) {
-            console.error('Error during ChatGPT review:', error);
+            console.error('Error during ChatGPT review:', error.message || error);
             process.exit(1);
           }
         }
+
         reviewCode();" > review.js
+
         # Run the review script
         node review.js
-    - name: Post Comments
-      uses: actions/github-script@v6
-      with:
-        script: |
-          const fs = require('fs');
-          const feedback = fs.readFileSync('chatgpt_response.txt', 'utf8');
-          github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: context.payload.pull_request.number,
-            body: feedback,
-          });

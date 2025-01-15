@@ -1,133 +1,41 @@
-name: ChatGPT Code Review with Inline Comments
+- name: Run ChatGPT Review
+env:
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+run: |
+  # Enable ES Modules by creating a package.json file
+  echo '{
+    "type": "module"
+  }' > package.json
 
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  # Create a simple test script
+  echo "import { OpenAI } from 'openai';
 
-permissions:
-  contents: read
-  pull-requests: write
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-jobs:
-  code_review:
-    runs-on: ubuntu-latest
+  async function testAPI() {
+    try {
+      const prompt = 'Please summarize this text: Hello, world!';
+      console.log('Sending API request...');
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 100,
+      });
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      console.log('API Raw Response:', JSON.stringify(response.data, null, 2));
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '16'
+      if (!response || !response.data || !response.data.choices || response.data.choices.length === 0) {
+        throw new Error('Invalid or empty response from OpenAI API');
+      }
 
-    - name: Install Dependencies
-      run: |
-        npm install openai @octokit/rest
+      console.log('API Response Content:', response.data.choices[0].message.content);
+    } catch (error) {
+      console.error('Error during API test:', error.message || error);
+      process.exit(1);
+    }
+  }
 
-    - name: Fetch PR Diff
-      id: get_diff
-      run: |
-        git fetch origin ${{ github.event.pull_request.base.ref }}
-        git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
+  testAPI();" > test.mjs
 
-    - name: Run ChatGPT Review and Post Inline Comments
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        # Enable ES Modules by creating a package.json file
-        echo '{
-          "type": "module"
-        }' > package.json
-
-        # Create the script
-        echo "import fs from 'fs';
-        import { OpenAI } from 'openai';
-        import { Octokit } from '@octokit/rest';
-
-        const openai = new OpenAI({
-          apiKey: process.env.OPENAI_API_KEY,
-        });
-
-        const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-
-        async function reviewCode() {
-          try {
-            const diff = fs.readFileSync('pr_diff.txt', 'utf8');
-            const rules = fs.readFileSync('rules.md', 'utf8');
-
-            const prompt = \`
-              Review the following Pull Request diff against the rules below:
-              Rules:
-              \${rules}
-
-              Diff:
-              \${diff}
-
-              Provide feedback with line numbers for each violation.
-            \`;
-
-            const response = await openai.chat.completions.create({
-              model: 'gpt-4',
-              messages: [{ role: 'user', content: prompt }],
-              max_tokens: 1000,
-            });
-
-            console.log('OpenAI API Raw Response:', JSON.stringify(response.data, null, 2));
-
-            if (!response.data || !response.data.choices || response.data.choices.length === 0) {
-              throw new Error('Invalid or empty response from OpenAI API');
-            }
-
-            const feedback = response.data.choices[0].message.content;
-            console.log('ChatGPT Feedback:');
-            console.log(feedback);
-
-            const comments = parseFeedback(feedback, diff);
-            await postComments(comments);
-          } catch (error) {
-            console.error('Error during ChatGPT review:', error.message || error);
-            process.exit(1);
-          }
-        }
-
-        function parseFeedback(feedback, diff) {
-          const lines = diff.split('\\n');
-          const comments = [];
-
-          // Parse GPT feedback and associate it with diff lines
-          const feedbackLines = feedback.split('\\n').filter(line => line.trim() !== '');
-          feedbackLines.forEach(fb => {
-            const match = fb.match(/line (\\d+): (.*)/i);
-            if (match) {
-              const lineNumber = parseInt(match[1], 10);
-              const comment = match[2];
-              comments.push({ line: lineNumber, body: comment });
-            }
-          });
-
-          return comments;
-        }
-
-        async function postComments(comments) {
-          const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
-          const pullNumber = parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10);
-
-          for (const comment of comments) {
-            await octokit.pulls.createReviewComment({
-              owner,
-              repo,
-              pull_number: pullNumber,
-              body: comment.body,
-              commit_id: process.env.GITHUB_SHA,
-              path: comment.path,
-              line: comment.line,
-            });
-          }
-        }
-
-        reviewCode();" > review.mjs
-
-        # Run the review script
-        node review.mjs
+  # Run the test script
+  node test.mjs

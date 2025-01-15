@@ -31,12 +31,13 @@ jobs:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       run: |
         # Create the review script
-        echo "import fs from 'fs';
-        import { OpenAI } from 'openai';
+        echo "const fs = require('fs');
+        const { Configuration, OpenAIApi } = require('openai');
 
-        const openai = new OpenAI({
+        const config = new Configuration({
           apiKey: process.env.OPENAI_API_KEY,
         });
+        const openai = new OpenAIApi(config);
 
         async function reviewCode() {
           try {
@@ -54,13 +55,13 @@ jobs:
               Provide a summary of violations and suggestions for improvements.
             \`;
 
-            const response = await openai.chat.completions.create({
+            const response = await openai.createChatCompletion({
               model: 'gpt-4',
               messages: [{ role: 'user', content: prompt }],
               max_tokens: 500,
             });
 
-            const feedback = response.choices[0].message.content;
+            const feedback = response.data.choices[0].message.content;
             console.log('ChatGPT Review Response:');
             console.log(feedback);
 

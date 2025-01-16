@@ -71,7 +71,8 @@ jobs:
               const chunks = chunkWithLineNumbers(addedLinesWithNumbers);
 
               for (const chunk of chunks) {
-                await processChunk(chunk, filePath, rules, feedbacks);
+                const feedback = await processChunk(chunk, filePath, rules);
+                if (feedback) feedbacks.push(...feedback); // Only append valid feedback
               }
             }
 
@@ -140,7 +141,7 @@ jobs:
           return chunks;
         }
 
-        async function processChunk(chunk, filePath, rules, feedbacks) {
+        async function processChunk(chunk, filePath, rules) {
           const formattedChunk = chunk.map(({ line, code }) => `Line ${line}: ${code}`).join('\n');
 
           const messages = [
@@ -178,31 +179,22 @@ jobs:
             });
 
             const feedbackContent = response.choices[0].message.content;
-            console.log(`Raw GPT Response:`, feedbackContent);
 
-            if (feedbackContent.trim() === '{ "status": "pass" }') {
+            const parsedFeedback = JSON.parse(feedbackContent);
+            if (parsedFeedback.status === "pass") {
               console.log(`No issues found for ${filePath}`);
-              return;
+              return null; // Return null if no issues found
             }
 
-            try {
-              const parsedFeedback = JSON.parse(feedbackContent);
-              if (parsedFeedback?.status === "pass") {
-                console.log(`No issues found for ${filePath}`);
-                return; // No need to add anything to feedbacks
-              }
-
-              // Otherwise, handle feedback as an array
-              if (Array.isArray(parsedFeedback)) {
-                feedbacks.push(...parsedFeedback);
-              } else {
-                console.error(`Unexpected feedback format:`, feedbackContent);
-              }
-                } catch (error) {
-              console.error(`Failed to parse GPT feedback:`, feedbackContent);
+            if (Array.isArray(parsedFeedback)) {
+              return parsedFeedback; // Return feedback array if valid
+            } else {
+              console.error(`Unexpected feedback format:`, feedbackContent);
+              return null;
             }
           } catch (error) {
-            console.error(`Error processing chunk for ${filePath}:`, error.message);
+            console.error(`Failed to parse GPT feedback:`, feedbackContent, error.message);
+            return null;
           }
         }
 

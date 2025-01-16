@@ -54,6 +54,31 @@ jobs:
           apiKey: process.env.OPENAI_API_KEY,
         });
 
+        async function callGPTWithRetry(prompt, retries = 3) {
+          let attempt = 0;
+          while (attempt < retries) {
+            try {
+              const response = await openai.chat.completions.create({
+                model: 'gpt-4',
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: 1000,
+                n: 1,
+              });
+              const content = response.choices[0].message.content;
+              try {
+                const parsedContent = JSON.parse(content);
+                return parsedContent; // Return parsed JSON if valid
+              } catch (err) {
+                console.error(`Invalid JSON response. Attempt ${attempt + 1}/${retries}:`, content);
+              }
+            } catch (apiError) {
+              console.error(`API call failed. Attempt ${attempt + 1}/${retries}:`, apiError.message);
+            }
+            attempt++;
+          }
+          throw new Error('Failed to get a valid response from GPT after multiple attempts.');
+        }
+
         async function generateFeedback() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
@@ -78,7 +103,7 @@ jobs:
                 Review the following changes in the filePath \`${filePath}\`:
                 ${addedLines.join('\n')}
 
-                Provide feedback in the following strict JSON format:
+                Respond in this strict JSON format:
                 [
                   {
                     "line": <line_number>,
@@ -89,51 +114,26 @@ jobs:
                   }
                 ]
                 If there are no issues, respond with:
-                {
-                  "status": "pass"
-                }
-                Ensure the output is valid JSON without additional text or explanations.
+                { "status": "pass" }
+                Do not include any additional explanations or text outside the JSON response.
               `;
 
               const maxTokens = Math.max(1000 - Math.ceil(prompt.length / 4), 50);
               console.log(`Dynamic max_tokens: ${maxTokens}`);
 
               try {
-                const response = await openai.chat.completions.create({
-                  model: 'gpt-4',
-                  messages: [{ role: 'user', content: prompt }],
-                  max_tokens: maxTokens,
-                  n: 1,
-                });
+                const parsedFeedback = await callGPTWithRetry(prompt);
 
-                const feedbackContent = response.choices[0].message.content;
-
-                if (!feedbackContent) {
-                  console.error(`No response received for ${filePath}`);
+                if (parsedFeedback.status === 'pass') {
+                  console.log(`No issues found for ${filePath}`);
                   continue;
                 }
 
-                try {
-                  const parsedFeedback = JSON.parse(feedbackContent);
-
-                  if (parsedFeedback.status === 'pass') {
-                    console.log(`No issues found for ${filePath}`);
-                    continue;
-                  }
-
-                  if (!Array.isArray(parsedFeedback)) {
-                    console.error(`Invalid response format for ${filePath}:`, feedbackContent);
-                    continue;
-                  }
-
-                  parsedFeedback.forEach(item => {
-                    feedbacks.push({ ...item, commitId: null });
-                  });
-                } catch (parseError) {
-                  console.error(`Failed to parse JSON response for ${filePath}:`, feedbackContent);
-                }
-              } catch (apiError) {
-                console.error(`Error while generating feedback for ${filePath}:`, apiError.message);
+                parsedFeedback.forEach(item => {
+                  feedbacks.push({ ...item, commitId: null });
+                });
+              } catch (error) {
+                console.error(`Failed to process feedback for ${filePath}:`, error.message);
               }
             }
 

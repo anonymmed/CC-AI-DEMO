@@ -4,8 +4,12 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-permissions: write-all
-
+permissions: 
+  contents: write
+  pull-requests: write
+  discussions: write
+  issues: write
+  
 jobs:
   code_review:
     runs-on: ubuntu-latest

@@ -83,18 +83,28 @@ jobs:
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
 
-            const changes = diff.split('diff --git').slice(1).map(change => {
-              const lines = change.split('\n');
-              const filePathMatch = lines[0].match(/b\/(\S+)/);
-              let filePath = filePathMatch ? filePathMatch[1] : null;
-              if (filePath && filePath.includes('workflows/')) {
-                return null;
-              }
-              const header = lines.find(line => line.startsWith('@@'));
-              const position = header ? parseInt(header.match(/\+(\d+)/)[1], 10) : null;
-              const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));
-              return { filePath, position, addedLines };
-            }).filter(change => change.filePath && change.addedLines.length > 0);
+            const changes = diff.split('diff --git')
+              .slice(1)
+              .map(change => {
+                const lines = change.split('\n');
+                const filePathMatch = lines[0]?.match(/b\/(\S+)/);
+                const filePath = filePathMatch ? filePathMatch[1] : null;
+
+                if (!filePath || filePath.includes('workflows/')) {
+                  return null; // Skip invalid or workflow files
+                }
+
+                const header = lines.find(line => line.startsWith('@@'));
+                const position = header ? parseInt(header.match(/\+(\d+)/)?.[1], 10) : null;
+                const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));
+
+                if (!position || addedLines.length === 0) {
+                  return null; // Skip invalid changes
+                }
+
+                return { filePath, position, addedLines };
+              })
+              .filter(Boolean); // Remove null values
 
             const feedbacks = [];
 
@@ -115,7 +125,6 @@ jobs:
               ]
               If there are no issues, respond with:
               { "status": "pass" }
-              Remember: Only respond with JSON. Do not include any explanations, summaries, or other comments.
               `;
 
               const maxTokens = Math.max(1000 - Math.ceil(prompt.length / 4), 50);

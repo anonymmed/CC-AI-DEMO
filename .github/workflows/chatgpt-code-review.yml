@@ -212,7 +212,7 @@ jobs:
                   pull_number,
                   body,
                   path: filePath,
-                  position: line,
+                  position: line+1,
                   commit_id: commitId,
                 });
                 console.log(`Comment posted for ${filePath} at line ${line}`);

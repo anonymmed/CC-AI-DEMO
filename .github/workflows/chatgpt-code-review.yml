@@ -57,6 +57,11 @@ jobs:
         const rulesPath = '.github/rules.json';
         const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
 
+        const MAX_TOKENS = 4000;
+        const AVERAGE_LINE_CHARACTERS = 80; // Approximate average line length
+        const CHARACTERS_PER_TOKEN = 4; // Approximate characters per token
+        const RESERVED_TOKENS = 1000; // Reserve for the response
+
         async function generateFeedback() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
@@ -73,38 +78,120 @@ jobs:
                 }
 
                 const header = lines.find(line => line.startsWith('@@'));
-                const position = header ? parseInt(header.match(/\+\d+/)?.[0].slice(1), 10) : null;
-                const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));
+                const position = header ? parseInt(header.match(/\+([0-9]+)/)?.[1], 10) : null;
+                const addedLines = [];
+                let lineCounter = position || 0;
 
-                if (!position || addedLines.length === 0) {
+                for (const line of lines) {
+                  if (line.startsWith('+') && !line.startsWith('+++')) {
+                    addedLines.push({
+                      lineNumber: lineCounter,
+                      lineDiff: line.slice(1)
+                    });
+                    lineCounter++;
+                  }
+                }
+
+                if (addedLines.length === 0) {
                   return null; // Skip invalid changes
                 }
 
-                return { filePath, position, addedLines };
+                return { filePath, addedLines };
               })
               .filter(Boolean); // Remove null values
 
             const feedbacks = [];
 
-            for (const { filePath, position, addedLines } of changes) {
-              const chunkSize = 800;
-              for (let i = 0; i < addedLines.length; i += chunkSize) {
-                const chunk = addedLines.slice(i, i + chunkSize).join('\n');
+            for (const { filePath, addedLines } of changes) {
+              let chunk = [];
+              let currentTokenCount = 0;
+
+              for (const line of addedLines) {
+                const lineTokenEstimate = Math.ceil((line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN);
+
+                if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {
+                  // Process the current chunk
+                  const messages = [
+                    {
+                      "role": "system",
+                      "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. Provide the correct line number for each issue so the review solution will be displayed correctly next to the issue.`
+                    },
+                    {
+                      "role": "user",
+                      "content": `
+                      Review the following changes in the filePath \`${filePath}\`:
+                      ${JSON.stringify(chunk, null, 2)}
+
+                      Respond strictly in the following JSON format:
+                      [
+                        {
+                          "line": <line_number>,
+                          "filePath": "<file_path>",
+                          "issueDescription": "<short_description>",
+                          "whyIssue": "<why_this_is_an_issue>",
+                          "fix": "<code_snippet>"
+                        }
+                      ]
+                      If there are no issues, respond with:
+                      { "status": "pass" }
+                      `
+                    }
+                  ];
+
+                  try {
+                    const response = await openai.chat.completions.create({
+                      model: 'gpt-4',
+                      messages,
+                      max_tokens: RESERVED_TOKENS,
+                      n: 1,
+                    });
+
+                    const feedbackContent = response.choices[0].message.content;
+                    console.log(`Raw GPT Response:`, feedbackContent);
+
+                    if (feedbackContent.trim() === '{ "status": "pass" }') {
+                      console.log(`No issues found for ${filePath}`);
+                      continue;
+                    }
+
+                    try {
+                      const parsedFeedback = JSON.parse(feedbackContent);
+                      parsedFeedback.forEach(item => {
+                        feedbacks.push({ ...item, commitId: null });
+                      });
+                    } catch (jsonError) {
+                      console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
+                    }
+                  } catch (error) {
+                    console.error(`Error processing feedback for ${filePath}:`, error.message);
+                  }
+
+                  // Reset for the next chunk
+                  chunk = [];
+                  currentTokenCount = 0;
+                }
+
+                chunk.push(line);
+                currentTokenCount += lineTokenEstimate;
+              }
+
+              // Process any remaining lines in the last chunk
+              if (chunk.length > 0) {
                 const messages = [
                   {
                     "role": "system",
-                    "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. When returning the review, don't mention the broken rules, and if a part of a function or function breaks multiple rules, include the whyIssue and fix together instead of sending them separately in different objects. And as a reviewer you need to make sure to provide the correct line number in the diff where you found the issue. so that the review solution will be displayed correctly next to the issue.`
+                    "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. Provide the correct line number for each issue so the review solution will be displayed correctly next to the issue.`
                   },
                   {
                     "role": "user",
                     "content": `
                     Review the following changes in the filePath \`${filePath}\`:
-                    ${chunk}
+                    ${JSON.stringify(chunk, null, 2)}
 
                     Respond strictly in the following JSON format:
                     [
                       {
-                        "line": the line number in diff where you found the issue,
+                        "line": <line_number>,
                         "filePath": "<file_path>",
                         "issueDescription": "<short_description>",
                         "whyIssue": "<why_this_is_an_issue>",
@@ -121,7 +208,7 @@ jobs:
                   const response = await openai.chat.completions.create({
                     model: 'gpt-4',
                     messages,
-                    max_tokens: Math.min(4000 - Math.ceil(messages[1].content.length / 4), 1000),
+                    max_tokens: RESERVED_TOKENS,
                     n: 1,
                   });
 
@@ -130,7 +217,7 @@ jobs:
 
                   if (feedbackContent.trim() === '{ "status": "pass" }') {
                     console.log(`No issues found for ${filePath}`);
-                    continue; // Continue to the next chunk
+                    continue;
                   }
 
                   try {
@@ -146,16 +233,6 @@ jobs:
                 }
               }
             }
-
-            // Add commit hashes for each feedback entry
-            feedbacks.forEach(feedback => {
-              try {
-                const command = `git blame -L ${feedback.line},${feedback.line} --line-porcelain -- ${feedback.filePath} | head -n 1 | awk '{print $1}'`;
-                feedback.commitId = execSync(command).toString().trim();
-              } catch (error) {
-                console.error(`Failed to get commit hash for ${feedback.filePath} at line ${feedback.line}:`, error.message);
-              }
-            });
 
             fs.writeFileSync('feedbacks.json', JSON.stringify(feedbacks, null, 2));
           } catch (error) {
@@ -194,7 +271,7 @@ jobs:
             });
 
             for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
-              const body = `${whyIssue}  in line${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
+              const body = `${whyIssue}  in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
 
               // Check for duplicates based on filePath, line, and issueDescription
               const commentExists = existingComments.data.some(

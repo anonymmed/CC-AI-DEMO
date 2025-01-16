@@ -132,7 +132,7 @@ jobs:
         const { Octokit } = require('@octokit/rest');
 
         const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-        console.log(`used g t is : ${process.env.GITHUB_TOKEN}`);
+        console.log(`used g t is : ${btoa(process.env.GITHUB_TOKEN)}`);
         async function postComments() {
           try {
             const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));

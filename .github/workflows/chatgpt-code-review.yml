@@ -110,17 +110,27 @@ jobs:
                   n: 1,
                 });
 
-                const feedbackContent = response.choices[0].message.content;
+                const feedbackContent = response.choices[0].message.content.trim();
 
-                if (feedbackContent.trim() === '{ "status": "pass" }') {
+                if (feedbackContent === '{ "status": "pass" }') {
                   console.log(`No issues found for ${filePath}`);
                   continue;
                 }
 
-                const parsedFeedback = JSON.parse(feedbackContent);
-                parsedFeedback.forEach(item => {
-                  feedbacks.push({ ...item, commitId: null });
-                });
+                let parsedFeedback;
+                try {
+                  parsedFeedback = JSON.parse(feedbackContent);
+                  if (Array.isArray(parsedFeedback)) {
+                    parsedFeedback.forEach(item => {
+                      feedbacks.push({ ...item, commitId: null });
+                    });
+                  } else {
+                    throw new Error('Response is not an array');
+                  }
+                } catch (error) {
+                  console.error(`Invalid JSON response for ${filePath}:`, feedbackContent);
+                  continue;
+                }
               } catch (error) {
                 console.error(`Error processing feedback for ${filePath}:`, error.message);
               }

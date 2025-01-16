@@ -24,6 +24,14 @@ jobs:
         git fetch origin ${{ github.event.pull_request.head.ref }}
         git checkout ${{ github.event.pull_request.head.ref }}
 
+    - name: Cache Node.js Modules
+      uses: actions/cache@v3
+      with:
+        path: ~/.npm
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
     - name: Install Dependencies
       run: npm install openai @octokit/rest@18.12.0
 
@@ -46,17 +54,6 @@ jobs:
           apiKey: process.env.OPENAI_API_KEY,
         });
 
-        function getCommitHash(filePath, lineNumber) {
-          try {
-            const command = `git blame -L ${lineNumber},${lineNumber} --line-porcelain -- ${filePath} | head -n 1 | awk '{print $1}'`;
-            console.log(`blame command is :${command}`);
-            return execSync(command).toString().trim();
-          } catch (error) {
-            console.error(`Failed to get commit hash for ${filePath} at line ${lineNumber}:`, error.message);
-            return null;
-          }
-        }
-
         async function generateFeedback() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
@@ -65,27 +62,33 @@ jobs:
               const lines = change.split('\n');
               const filePathMatch = lines[0].match(/b\/(\S+)/);
               let filePath = filePathMatch ? filePathMatch[1] : null;
-              if(filePath && filePath.includes('workflows'))
-              {
+              if (filePath && filePath.includes('workflows')) {
                 filePath = `.github/${filePath}`;
               }
               const header = lines.find(line => line.startsWith('@@'));
               const position = header ? parseInt(header.match(/\+(\d+)/)[1], 10) : null;
               const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));
-              const commitId = filePath && position ? getCommitHash(filePath, position) : null;
-              return { filePath, position, addedLines, commitId };
+              return { filePath, position, addedLines };
             }).filter(change => change.filePath && change.addedLines.length > 0);
-
-            // console.log('Parsed changes with commit IDs:', changes);
 
             const feedbacks = [];
 
-            for (const { filePath, position, addedLines, commitId } of changes) {
+            for (const { filePath, position, addedLines } of changes) {
               const prompt = `
-                Review the following changes in the file \`${filePath}\`:
+                Review the following changes in the filePath \`${filePath}\`:
                 ${addedLines.join('\n')}
 
-                Provide feedback and suggestions for improvements, considering coding standards and logic.
+                Provide feedback in the following strict JSON format:
+                [
+                  {
+                    "line": <line_number>,
+                    "filePath": "<file_path>",
+                    "issueDescription": "<short_description>",
+                    "whyIssue": "<why_this_is_an_issue>",
+                    "fix": "<optional_fix_or_code_snippet>"
+                  }
+                ]
+                If there are no issues, respond with "pass".
               `;
 
               const maxTokens = Math.max(1000 - Math.ceil(prompt.length / 4), 50);
@@ -99,18 +102,31 @@ jobs:
                   n: 1,
                 });
 
-                const feedback = {
-                  filePath,
-                  position,
-                  commitId,
-                  body: response.choices[0].message.content,
-                };
+                const feedbackContent = response.choices[0].message.content;
 
-                feedbacks.push(feedback);
+                if (feedbackContent.trim().toLowerCase() === 'pass') {
+                  console.log(`No issues found for ${filePath}`);
+                  continue;
+                }
+
+                const parsedFeedback = JSON.parse(feedbackContent);
+                parsedFeedback.forEach(item => {
+                  feedbacks.push({ ...item, commitId: null });
+                });
               } catch (apiError) {
                 console.error(`Error while generating feedback for ${filePath}:`, apiError.message);
               }
             }
+
+            // Add commit hashes for each feedback entry
+            feedbacks.forEach(feedback => {
+              try {
+                const command = `git blame -L ${feedback.line},${feedback.line} --line-porcelain -- ${feedback.filePath} | head -n 1 | awk '{print $1}'`;
+                feedback.commitId = execSync(command).toString().trim();
+              } catch (error) {
+                console.error(`Failed to get commit hash for ${feedback.filePath} at line ${feedback.line}:`, error.message);
+              }
+            });
 
             fs.writeFileSync('feedbacks.json', JSON.stringify(feedbacks, null, 2));
           } catch (error) {
@@ -134,14 +150,21 @@ jobs:
         const { Octokit } = require('@octokit/rest');
 
         const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-        console.log(`used g t is : ${btoa(process.env.GITHUB_TOKEN)}`);
+
         async function postComments() {
           try {
             const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const pull_number = process.env.PR_NUMBER;
-            for (const { filePath, position, commitId, body } of feedbacks) {
-              console.log(`Posting comment for owner ${owner}, repo: ${repo}, pull number: ${pull_number} , path : ${filePath} at position ${position} for commit ${commitId}`);
+
+            for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
+              const body = `
+                **Issue**: ${issueDescription}
+                **Why it's an issue**: ${whyIssue}
+                ${fix ? `**Suggested Fix**:\n\`\`\`\n${fix}\n\`\`\`` : ''}
+              `;
+
+              console.log(`Posting comment for ${filePath} at line ${line}, commit ${commitId}`);
 
               try {
                 await octokit.pulls.createReviewComment({
@@ -150,12 +173,12 @@ jobs:
                   pull_number,
                   body,
                   path: filePath,
-                  position,
+                  position: line,
                   commit_id: commitId,
                 });
-                console.log(`Comment posted for ${filePath} at position ${position}`);
+                console.log(`Comment posted for ${filePath} at line ${line}`);
               } catch (err) {
-                console.error(`Failed to post comment for ${filePath}:${position}`, err.message);
+                console.error(`Failed to post comment for ${filePath}:${line}`, err.message);
               }
             }
           } catch (error) {

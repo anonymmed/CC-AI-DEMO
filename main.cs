@@ -4,30 +4,59 @@ namespace CodeTest
 {
     public class Sample
     {
-
         public int AddNumbers(int a, int b)
         {
             return a + b; 
         }
-
-        // ConcatStrings function summary
-        /// <summary>
-        /// This method adds two numbers but has an incomplete summary.
-        /// </summary>
+        public async Task FetchDataFromDatabaseAsync()
+        {
+            string query = "SELECT * FROM Users";
+            Console.WriteLine(query);
+        }
         public string ConcatStrings(string str1, string str2)
         {
-            return str1 + str2; 
-        }
-
-        public void ExecuteQuery()
-        {
-            string query = "SELECT * FROM Users"; 
-            Console.WriteLine(query);
+            return str1 + str2;
         }
 
         public void PrintMessage()
         {
-            Console.WriteLine("Hello World"); 
+            Console.WriteLine("Hello World");
+        }
+        public string GetServiceData()
+        {
+            var readOnlyService = new ReadOnlyService();
+            return readOnlyService.GetData();
+        }
+
+        public void HandleError()
+        {
+            throw new KeyNotFoundException("Entity not found");
+        }
+
+        public void ValidateInput(string param)
+        {
+            if (string.IsNullOrEmpty(param)) return;
+            Console.WriteLine("Valid input");
+        }
+
+        public void DefaultExample()
+        {
+            long value = default(long);
+            Console.WriteLine(value);
+        }
+
+        public async Task ExecuteAsync()
+        {
+            // TODO: Refactor this method to improve performance.
+            Console.WriteLine("Executing...");
+        }
+    }
+
+    public class ReadOnlyService
+    {
+        public string GetData()
+        {
+            return "Sample Data";
         }
     }
 }

@@ -1,7 +1,15 @@
 [
   "All functions must have a summary comment or inheritdoc.",
   "Summary comments must respect the function return type and parameter names.",
-  "Summary comments must include all function parameters.",
+  "Summary comments must include all function parameters, mus have the correct format and must be in English without any typos. if the function have params and return type the summary must respect the format:  /// <summary> /// function description /// </summary> /// <param name=\"param1\">param description.</param>",
   "Avoid using `SELECT *` in SQL queries; specify the columns explicitly.",
-  "Use PascalCase for method names in C#."
+  "Use PascalCase for method names in C#.",
+  "Avoid using string literals in nameof(); always reference variables directly",
+  "All `if` statements must use curly brackets `{}` even if the body contains a single statement or is written inline. For example, replace `if (a) return true;` with `if (a) { return true; }`.",
+  "Use constants (e.g., `0`, `null`, `false`) instead of `default(type)` for non-generic types, as constants are easier to read and their behavior will never change.",
+  "Avoid including 'read-only' or 'read-write' in the names of service variables injected into controllers. This promotes consistency and avoids unnecessary renaming if the service's functionality changes, minimizing diffs and maintaining clarity.",
+  "Always use the custom exception type `EntityNotFoundException` for handling cases where an entity is not found. Avoid using system-defined exception types like `KeyNotFoundException`, as they can be thrown in system-level contexts, potentially leading to ambiguity. Custom exceptions ensure clarity and precise intent in your code.",
+  "When adding a TODO comment for technical debt, always include a reference to the relevant ticket in the comment. For example: `// TODO DEV-23710: This needs to be updated to use CertificateReadOnlyService.GetCertificateContent()`. This ensures traceability and helps track the context and resolution of the TODO.",
+  "All comments, documentation, and user-facing strings in the code should be free of typos, grammatical errors, or unclear language. Proper English spelling and grammar should be used to ensure code clarity and maintain a professional standard.",
+  "All methods in a class should have a single blank line separating them to improve code readability and maintain a consistent structure."
 ]

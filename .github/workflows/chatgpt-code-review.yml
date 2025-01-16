@@ -64,9 +64,9 @@ jobs:
               const lines = change.split('\n');
               const filePathMatch = lines[0].match(/b\/(\S+)/);
               let filePath = filePathMatch ? filePathMatch[1] : null;
-              if(filepath.includes('workflows'))
+              if(filePath.includes('workflows'))
               {
-                filepath = `.github/${filepath}`;
+                filePath = `.github/${filePath}`;
               }
               const header = lines.find(line => line.startsWith('@@'));
               const position = header ? parseInt(header.match(/\+(\d+)/)[1], 10) : null;

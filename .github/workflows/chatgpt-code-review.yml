@@ -33,7 +33,7 @@ jobs:
           ${{ runner.os }}-node-
 
     - name: Install Dependencies
-      run: npm install openai @octokit/rest@18.12.0
+      run: npm install openai @octokit/rest@18.12.0 esprima
 
     - name: Fetch PR Diff
       id: get_diff
@@ -49,6 +49,7 @@ jobs:
         const fs = require('fs');
         const { execSync } = require('child_process');
         const { OpenAI } = require('openai');
+        const esprima = require('esprima');
 
         const openai = new OpenAI({
           apiKey: process.env.OPENAI_API_KEY,
@@ -85,65 +86,39 @@ jobs:
               .filter(Boolean); // Remove null values
 
             const feedbacks = [];
+            const CHUNK_MIN_SIZE = 300; // Minimum character size for a chunk
 
             for (const { filePath, position, addedLines } of changes) {
-              const chunkSize = 800;
-              for (let i = 0; i < addedLines.length; i += chunkSize) {
-                const chunk = addedLines.slice(i, i + chunkSize).join('\n');
-                const messages = [
-                  {
-                    "role": "system",
-                    "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. When returning the review, don't mention the broken rules, and if a part of a function or function breaks multiple rules, include the whyIssue and fix together instead of sending them separately in different objects. And as a reviewer you need to make sure to provide the correct line number in the diff where you found the issue. so that the review solution will be displayed correctly next to the issue.`
-                  },
-                  {
-                    "role": "user",
-                    "content": `
-                    Review the following changes in the filePath \`${filePath}\`:
-                    ${chunk}
+              const code = addedLines.join('\n');
+              let parsed;
 
-                    Respond strictly in the following JSON format:
-                    [
-                      {
-                        "line": the line number in diff where you found the issue,
-                        "filePath": "<file_path>",
-                        "issueDescription": "<short_description>",
-                        "whyIssue": "<why_this_is_an_issue>",
-                        "fix": "<code_snippet>"
-                      }
-                    ]
-                    If there are no issues, respond with:
-                    { "status": "pass" }
-                    `
-                  }
-                ];
+              try {
+                parsed = esprima.parseScript(code, { range: true });
+              } catch (error) {
+                console.error(`Failed to parse ${filePath}:`, error.message);
+                continue;
+              }
 
-                try {
-                  const response = await openai.chat.completions.create({
-                    model: 'gpt-4',
-                    messages,
-                    max_tokens: Math.min(4000 - Math.ceil(messages[1].content.length / 4), 1000),
-                    n: 1,
-                  });
+              let chunkBuffer = '';
 
-                  const feedbackContent = response.choices[0].message.content;
-                  console.log(`Raw GPT Response:`, feedbackContent);
+              for (const node of parsed.body) {
+                const start = node.range[0];
+                const end = node.range[1];
+                const logicalChunk = code.slice(start, end);
 
-                  if (feedbackContent.trim() === '{ "status": "pass" }') {
-                    console.log(`No issues found for ${filePath}`);
-                    continue;
-                  }
-
-                  try {
-                    const parsedFeedback = JSON.parse(feedbackContent);
-                    parsedFeedback.forEach(item => {
-                      feedbacks.push({ ...item, commitId: null });
-                    });
-                  } catch (jsonError) {
-                    console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
-                  }
-                } catch (error) {
-                  console.error(`Error processing feedback for ${filePath}:`, error.message);
+                // Accumulate chunks until reaching the minimum size
+                if (chunkBuffer.length < CHUNK_MIN_SIZE) {
+                  chunkBuffer += '\n' + logicalChunk;
+                } else {
+                  // Send the accumulated chunk to GPT and reset the buffer
+                  await processChunk(chunkBuffer, filePath, rules, feedbacks);
+                  chunkBuffer = logicalChunk; // Start a new buffer with the current logical chunk
                 }
+              }
+
+              // Process any remaining chunk in the buffer
+              if (chunkBuffer.trim()) {
+                await processChunk(chunkBuffer, filePath, rules, feedbacks);
               }
             }
 
@@ -161,6 +136,63 @@ jobs:
           } catch (error) {
             console.error('Error generating feedback:', error);
             process.exit(1);
+          }
+        }
+
+        async function processChunk(chunk, filePath, rules, feedbacks) {
+          const messages = [
+            {
+              "role": "system",
+              "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. When returning the review, don't mention the broken rules, and if a part of a function or function breaks multiple rules, include the whyIssue and fix together instead of sending them separately in different objects. And as a reviewer you need to make sure to provide the correct line number in the diff where you found the issue. so that the review solution will be displayed correctly next to the issue.`
+            },
+            {
+              "role": "user",
+              "content": `
+              Review the following changes in the filePath \`${filePath}\`:
+              ${chunk}
+
+              Respond strictly in the following JSON format:
+              [
+                {
+                  "line": the line number in diff where you found the issue,
+                  "filePath": "<file_path>",
+                  "issueDescription": "<short_description>",
+                  "whyIssue": "<why_this_is_an_issue>",
+                  "fix": "<code_snippet>"
+                }
+              ]
+              If there are no issues, respond with:
+              { "status": "pass" }
+              `
+            }
+          ];
+
+          try {
+            const response = await openai.chat.completions.create({
+              model: 'gpt-4',
+              messages,
+              max_tokens: Math.min(4000 - Math.ceil(messages[1].content.length / 4), 1000),
+              n: 1,
+            });
+
+            const feedbackContent = response.choices[0].message.content;
+            console.log(`Raw GPT Response:`, feedbackContent);
+
+            if (feedbackContent.trim() === '{ "status": "pass" }') {
+              console.log(`No issues found for ${filePath}`);
+              return;
+            }
+
+            try {
+              const parsedFeedback = JSON.parse(feedbackContent);
+              parsedFeedback.forEach(item => {
+                feedbacks.push({ ...item, commitId: null });
+              });
+            } catch (jsonError) {
+              console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
+            }
+          } catch (error) {
+            console.error(`Error processing feedback for ${filePath}:`, error.message);
           }
         }
 
@@ -236,4 +268,3 @@ jobs:
         EOF
     
         node post_comments.js
-    

@@ -141,7 +141,7 @@ jobs:
             const pull_number = parseInt(process.env.GITHUB_REF_NAME.split('/')[2], 10);
 
             for (const { filePath, position, commitId, body } of feedbacks) {
-              console.log(`Posting comment for ${filePath} at position ${position} for commit ${commitId}`);
+              console.log(`Posting comment for owner ${owner}, repo: ${repo}, pull number: ${pull_number} , path : ${filePath} at position ${position} for commit ${commitId}`);
 
               try {
                 await octokit.pulls.createReviewComment({

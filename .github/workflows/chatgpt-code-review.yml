@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-permissions:
+permissions: 
   contents: write
   pull-requests: write
   discussions: write
@@ -26,7 +26,7 @@ jobs:
     - name: Install Dependencies
       run: npm install openai @octokit/rest@18.12.0
 
-    - name: Fetch PR Diff and Commit IDs
+    - name: Fetch PR Diff
       id: get_diff
       run: |
         git fetch origin ${{ github.event.pull_request.base.ref }}
@@ -48,9 +48,11 @@ jobs:
 
         function getCommitHash(filePath, lineNumber) {
           try {
-            const command = `git blame -L ${lineNumber},${lineNumber} -- ${filePath} | awk '{print \"$1\"}'`;
-            const hash = execSync(command).toString().trim();
-            return hash;
+            // Corrected command to retrieve the hash
+            const command = `git blame -L ${lineNumber},${lineNumber} -- ${filePath}`;
+            const blameOutput = execSync(command).toString().trim();
+            const hashMatch = blameOutput.match(/^([a-f0-9]{40})/);
+            return hashMatch ? hashMatch[1] : null;
           } catch (error) {
             console.error(`Failed to get commit hash for ${filePath} at line ${lineNumber}:`, error.message);
             return null;

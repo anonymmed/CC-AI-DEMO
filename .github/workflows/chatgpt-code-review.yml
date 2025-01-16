@@ -187,8 +187,18 @@ jobs:
 
             try {
               const parsedFeedback = JSON.parse(feedbackContent);
-              feedbacks.push(...parsedFeedback);
-            } catch (error) {
+              if (parsedFeedback?.status === "pass") {
+                console.log(`No issues found for ${filePath}`);
+                return; // No need to add anything to feedbacks
+              }
+
+              // Otherwise, handle feedback as an array
+              if (Array.isArray(parsedFeedback)) {
+                feedbacks.push(...parsedFeedback);
+              } else {
+                console.error(`Unexpected feedback format:`, feedbackContent);
+              }
+                } catch (error) {
               console.error(`Failed to parse GPT feedback:`, feedbackContent);
             }
           } catch (error) {

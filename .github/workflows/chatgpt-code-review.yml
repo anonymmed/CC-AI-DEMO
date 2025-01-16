@@ -54,17 +54,12 @@ jobs:
           apiKey: process.env.OPENAI_API_KEY,
         });
 
+        const rulesPath = '.github/rules.json';
+        const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
+
         async function generateFeedback() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
-            const rulesPath = '.github/rules.json';
-
-            if (!fs.existsSync(rulesPath)) {
-              console.error('Rules file not found at .github/rules.json');
-              process.exit(1);
-            }
-
-            const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
 
             const changes = diff.split('diff --git')
               .slice(1)
@@ -95,12 +90,12 @@ jobs:
               const messages = [
                 {
                   "role": "system",
-                  "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Do not include any explanations or comments outside the JSON. Use the following rules for the review: ${JSON.stringify(rules)}`
+                  "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}.`
                 },
                 {
                   "role": "user",
                   "content": `
-                  Review the following changes in the filePath ${filePath}:
+                  Review the following changes in the filePath \`${filePath}\`:
                   ${addedLines.join('\n')}
 
                   Respond strictly in the following JSON format:
@@ -193,7 +188,7 @@ jobs:
               const body = `
                 **Issue**: ${issueDescription}
                 **Why it's an issue**: ${whyIssue}
-                ${Array.isArray(fix) && fix.length > 0 ? `**Suggested Fix**:\n\\`\\`\\`\n${fix.join('\n')}\n\\`\\`\\`` : ''}
+                ${Array.isArray(fix) && fix.length > 0 ? '**Suggested Fix**:\n```' + fix.join('\n') + '\n```' : ''}
               `;
 
               // Check for duplicates based on filePath, line, and issueDescription

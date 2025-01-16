@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-permissions: 
+permissions:
   contents: write
   pull-requests: write
   discussions: write
@@ -26,12 +26,11 @@ jobs:
     - name: Install Dependencies
       run: npm install openai @octokit/rest@18.12.0
 
-    - name: Fetch PR Diff and Commit ID
+    - name: Fetch PR Diff and Commit IDs
       id: get_diff
       run: |
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
-        git rev-parse HEAD > commit_id.txt
 
     - name: Generate ChatGPT Feedback
       id: generate_feedback
@@ -40,16 +39,27 @@ jobs:
       run: |
         cat <<'EOF' > generate_feedback.js
         const fs = require('fs');
+        const { execSync } = require('child_process');
         const { OpenAI } = require('openai');
 
         const openai = new OpenAI({
           apiKey: process.env.OPENAI_API_KEY,
         });
 
+        function getCommitHash(filePath, lineNumber) {
+          try {
+            const command = `git blame -L ${lineNumber},${lineNumber} -- ${filePath} | awk '{print \"$1\"}'`;
+            const hash = execSync(command).toString().trim();
+            return hash;
+          } catch (error) {
+            console.error(`Failed to get commit hash for ${filePath} at line ${lineNumber}:`, error.message);
+            return null;
+          }
+        }
+
         async function generateFeedback() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
-            const commitId = fs.readFileSync('commit_id.txt', 'utf8').trim();
 
             const changes = diff.split('diff --git').slice(1).map(change => {
               const lines = change.split('\n');
@@ -58,8 +68,11 @@ jobs:
               const header = lines.find(line => line.startsWith('@@'));
               const position = header ? parseInt(header.match(/\+(\d+)/)[1], 10) : null;
               const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));
+              const commitId = filePath && position ? getCommitHash(filePath, position) : null;
               return { filePath, position, addedLines, commitId };
             }).filter(change => change.filePath && change.addedLines.length > 0);
+
+            console.log('Parsed changes with commit IDs:', changes);
 
             const feedbacks = [];
 

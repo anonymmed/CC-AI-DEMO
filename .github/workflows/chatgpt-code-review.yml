@@ -108,8 +108,11 @@ jobs:
                   console.log(`No issues found for ${filePath}`);
                   continue;
                 }
-
-                const parsedFeedback = JSON.parse(feedbackContent);
+                let parsedFeedback;
+                parsedFeedback = JSON.parse(feedbackContent);
+                if(!Array.isArray(parsedFeedback)) {
+                  console.log(`gpt response is not an array :${parsedFeedback}`);
+                }
                 parsedFeedback.forEach(item => {
                   feedbacks.push({ ...item, commitId: null });
                 });

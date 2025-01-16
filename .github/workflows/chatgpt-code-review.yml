@@ -61,8 +61,8 @@ jobs:
             const changes = diff.split('diff --git')
               .slice(1)
               .map(change => {
-                const lines = change.split('\n');
-                const filePathMatch = lines[0]?.match(/b\/(\S+)/);
+                const lines = change.split('\\n');
+                const filePathMatch = lines[0]?.match(/b\\/(\\S+)/);
                 const filePath = filePathMatch ? filePathMatch[1] : null;
 
                 if (!filePath || filePath.includes('workflows/')) {
@@ -70,7 +70,7 @@ jobs:
                 }
 
                 const header = lines.find(line => line.startsWith('@@'));
-                const position = header ? parseInt(header.match(/\+(\d+)/)?.[1], 10) : null;
+                const position = header ? parseInt(header.match(/\\+(\\d+)/)?.[1], 10) : null;
                 const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));
 
                 if (!position || addedLines.length === 0) {
@@ -93,7 +93,7 @@ jobs:
                   "role": "user",
                   "content": `
                   Review the following changes in the filePath \`${filePath}\`:
-                  ${addedLines.join('\n')}
+                  ${addedLines.join('\\n')}
 
                   Respond strictly in the following JSON format:
                   [
@@ -185,7 +185,7 @@ jobs:
               const body = `
                 **Issue**: ${issueDescription}
                 **Why it's an issue**: ${whyIssue}
-                ${Array.isArray(fix) && fix.length > 0 ? `**Suggested Fix**:\n\`\`\`\n${fix.join('\n')}\n\`\`\`` : ''}
+                ${Array.isArray(fix) && fix.length > 0 ? `**Suggested Fix**:\\n\\\`\\\`\\\`\\n${fix.join('\\n')}\\n\\\`\\\`\\\`` : ''}
               `;
 
               // Check for duplicates based on filePath, line, and issueDescription
@@ -210,7 +210,7 @@ jobs:
                   pull_number,
                   body,
                   path: filePath,
-                  position: line+2,
+                  position: line,
                   commit_id: commitId,
                 });
                 console.log(`Comment posted for ${filePath} at line ${line}`);

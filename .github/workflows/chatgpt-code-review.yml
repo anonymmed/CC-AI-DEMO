@@ -64,7 +64,7 @@ jobs:
               const lines = change.split('\n');
               const filePathMatch = lines[0].match(/b\/(\S+)/);
               let filePath = filePathMatch ? filePathMatch[1] : null;
-              if(filePath.includes('workflows'))
+              if(filePath && filePath.includes('workflows'))
               {
                 filePath = `.github/${filePath}`;
               }

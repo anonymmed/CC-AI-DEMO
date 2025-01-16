@@ -90,7 +90,7 @@ jobs:
               const messages = [
                 {
                   "role": "system",
-                  "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}.`
+                  "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. when returning the review don't mention the rules as if they are blackbox for user`
                 },
                 {
                   "role": "user",
@@ -101,7 +101,7 @@ jobs:
                   Respond strictly in the following JSON format:
                   [
                     {
-                      "line": <line_number>,
+                      "line": the line number in diff where you found the issue,
                       "filePath": "<file_path>",
                       "issueDescription": "<short_description>",
                       "whyIssue": "<why_this_is_an_issue>",

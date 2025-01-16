@@ -90,7 +90,7 @@ jobs:
               const messages = [
                 {
                   "role": "system",
-                  "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. when returning the review don't mention the rules as if they are blackbox for user`
+                  "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. when returning the review don't mention the broken rules, and if part of function or function breaks multiple rules include the whyIssue and fix together instead of sending them separately in different objects.`
                 },
                 {
                   "role": "user",

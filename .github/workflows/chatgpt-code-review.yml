@@ -57,20 +57,28 @@ jobs:
         async function generateFeedback() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
+            const rulesPath = '.github/rules.json';
+
+            if (!fs.existsSync(rulesPath)) {
+              console.error('Rules file not found at .github/rules.json');
+              process.exit(1);
+            }
+
+            const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
 
             const changes = diff.split('diff --git')
               .slice(1)
               .map(change => {
-                const lines = change.split('\\n');
+                const lines = change.split('\n');
                 const filePathMatch = lines[0]?.match(/b\/(\S+)/);
                 const filePath = filePathMatch ? filePathMatch[1] : null;
 
-                if (!filePath || filePath.includes('workflows/')) {
+                if (!filePath || filePath.includes('workflows/') || filePath.includes('rules')) {
                   return null; // Skip invalid or workflow files
                 }
 
                 const header = lines.find(line => line.startsWith('@@'));
-                const position = header ? parseInt(header.match(/\\+(\\d+)/)?.[1], 10) : null;
+                const position = header ? parseInt(header.match(/\+(\d+)/)?.[1], 10) : null;
                 const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));
 
                 if (!position || addedLines.length === 0) {
@@ -87,13 +95,13 @@ jobs:
               const messages = [
                 {
                   "role": "system",
-                  "content": "You are an AI reviewing code. Always respond in valid JSON format as described. Do not include any explanations or comments outside the JSON."
+                  "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Do not include any explanations or comments outside the JSON. Use the following rules for the review: ${JSON.stringify(rules)}`
                 },
                 {
                   "role": "user",
                   "content": `
-                  Review the following changes in the filePath \`${filePath}\`:
-                  ${addedLines.join('\\n')}
+                  Review the following changes in the filePath \\`${filePath}\\`:
+                  ${addedLines.join('\n')}
 
                   Respond strictly in the following JSON format:
                   [
@@ -185,7 +193,7 @@ jobs:
               const body = `
                 **Issue**: ${issueDescription}
                 **Why it's an issue**: ${whyIssue}
-                ${Array.isArray(fix) && fix.length > 0 ? `**Suggested Fix**:\\n\\\`\\\`\\\`\\n${fix.join('\\n')}\\n\\\`\\\`\\\`` : ''}
+                ${Array.isArray(fix) && fix.length > 0 ? `**Suggested Fix**:\n\\`\\`\\`\n${fix.join('\n')}\n\\`\\`\\`` : ''}
               `;
 
               // Check for duplicates based on filePath, line, and issueDescription

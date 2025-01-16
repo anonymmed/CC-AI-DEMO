@@ -63,7 +63,11 @@ jobs:
             const changes = diff.split('diff --git').slice(1).map(change => {
               const lines = change.split('\n');
               const filePathMatch = lines[0].match(/b\/(\S+)/);
-              const filePath = filePathMatch ? filePathMatch[1] : null;
+              let filePath = filePathMatch ? filePathMatch[1] : null;
+              if(filepath.includes('workflows'))
+              {
+                filepath = `.github/${filepath}`;
+              }
               const header = lines.find(line => line.startsWith('@@'));
               const position = header ? parseInt(header.match(/\+(\d+)/)[1], 10) : null;
               const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));

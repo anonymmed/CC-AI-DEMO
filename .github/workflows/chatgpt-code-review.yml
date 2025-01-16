@@ -8,7 +8,7 @@ permissions:
   contents: write
   pull-requests: write
   repository-projects: write
-  
+
 jobs:
   code_review:
     runs-on: ubuntu-latest
@@ -174,12 +174,32 @@ jobs:
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const pull_number = process.env.PR_NUMBER;
 
+            console.log('Fetching existing comments...');
+            const existingComments = await octokit.pulls.listReviewComments({
+              owner,
+              repo,
+              pull_number,
+            });
+
             for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
               const body = `
                 **Issue**: ${issueDescription}
                 **Why it's an issue**: ${whyIssue}
                 ${Array.isArray(fix) && fix.length > 0 ? `**Suggested Fix**:\n\`\`\`\n${fix.join('\n')}\n\`\`\`` : ''}
               `;
+
+              // Check for duplicates
+              const commentExists = existingComments.data.some(
+                (comment) =>
+                  comment.path === filePath &&
+                  comment.position === line &&
+                  comment.body.trim() === body.trim()
+              );
+
+              if (commentExists) {
+                console.log(`Skipping duplicate comment for ${filePath} at line ${line}`);
+                continue;
+              }
 
               console.log(`Posting comment for ${filePath} at line ${line}, commit ${commitId}`);
 

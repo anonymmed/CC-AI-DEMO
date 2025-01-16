@@ -177,8 +177,7 @@ jobs:
                 **Issue**: ${issueDescription}
                 **Why it's an issue**: ${whyIssue}
                 ${fix ? `**Suggested Fix**:\n\n\`
-                ${fix.join('\n')}\n\\`` : ''}
-              `;
+                ${fix.join('\n')}\n\\`` : ''}`;
 
               console.log(`Posting comment for ${filePath} at line ${line}, commit ${commitId}`);
 

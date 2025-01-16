@@ -194,7 +194,7 @@ jobs:
             });
 
             for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
-              const body = `${whyIssue} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
+              const body = `${whyIssue}  in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
 
               // Check for duplicates based on filePath, line, and issueDescription
               const commentExists = existingComments.data.some(

@@ -7,8 +7,6 @@ on:
 permissions: 
   contents: write
   pull-requests: write
-  discussions: write
-  issues: write
 
 jobs:
   code_review:
@@ -17,11 +15,13 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
       with:
-        node-version: '16'
+        fetch-depth: 0  # Fetch all history for accurate git blame
+
+    - name: Fetch PR Branch
+      run: |
+        git fetch origin ${{ github.event.pull_request.head.ref }}
+        git checkout ${{ github.event.pull_request.head.ref }}
 
     - name: Install Dependencies
       run: npm install openai @octokit/rest@18.12.0
@@ -29,7 +29,6 @@ jobs:
     - name: Fetch PR Diff
       id: get_diff
       run: |
-        git fetch origin ${{ github.event.pull_request.base.ref }}
         git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
 
     - name: Generate ChatGPT Feedback
@@ -49,6 +48,7 @@ jobs:
         function getCommitHash(filePath, lineNumber) {
           try {
             const command = `git blame -L ${lineNumber},${lineNumber} --line-porcelain -- ${filePath} | head -n 1 | awk '{print $1}'`;
+            console.log(`blame command is :${command}`);
             return execSync(command).toString().trim();
           } catch (error) {
             console.error(`Failed to get commit hash for ${filePath} at line ${lineNumber}:`, error.message);
@@ -71,6 +71,8 @@ jobs:
               return { filePath, position, addedLines, commitId };
             }).filter(change => change.filePath && change.addedLines.length > 0);
 
+            // console.log('Parsed changes with commit IDs:', changes);
+
             const feedbacks = [];
 
             for (const { filePath, position, addedLines, commitId } of changes) {
@@ -82,6 +84,7 @@ jobs:
               `;
 
               const maxTokens = Math.max(1000 - Math.ceil(prompt.length / 4), 50);
+              console.log(`Dynamic max_tokens: ${maxTokens}`);
 
               try {
                 const response = await openai.chat.completions.create({

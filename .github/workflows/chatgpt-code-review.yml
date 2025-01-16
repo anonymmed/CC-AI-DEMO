@@ -58,10 +58,9 @@ jobs:
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
 
-            const changes = diff
-              .split('diff --git')
+            const changes = diff.split('diff --git')
               .slice(1)
-              .map((change) => {
+              .map(change => {
                 const lines = change.split('\n');
                 const filePathMatch = lines[0]?.match(/b\/(\S+)/);
                 const filePath = filePathMatch ? filePathMatch[1] : null;
@@ -70,9 +69,9 @@ jobs:
                   return null; // Skip invalid or workflow files
                 }
 
-                const header = lines.find((line) => line.startsWith('@@'));
+                const header = lines.find(line => line.startsWith('@@'));
                 const position = header ? parseInt(header.match(/\+(\d+)/)?.[1], 10) : null;
-                const addedLines = lines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).map((line) => line.slice(1));
+                const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));
 
                 if (!position || addedLines.length === 0) {
                   return null; // Skip invalid changes
@@ -86,30 +85,21 @@ jobs:
 
             for (const { filePath, position, addedLines } of changes) {
               const prompt = `
-              You are a code review assistant. Provide feedback for the following changes by returning arguments for the review function strictly in JSON format:
-
-              Function to simulate:
-              review(line: number, filePath: string, issueDescription: string, whyIssue: string, fix?: string[]): void;
-
-              Changes:
-              File Path: ${filePath}
-              Lines:
+              Review the following changes in the filePath \`${filePath}\`:
               ${addedLines.join('\n')}
 
-              Rules:
-              1. Respond strictly with JSON representing the parameters for the review function.
-              2. Return an empty array [] if no issues are found.
-
-              Example valid JSON response:
+              Respond strictly in the following JSON format. Do not include any additional text or explanations. Only provide valid JSON:
               [
                 {
                   "line": <line_number>,
                   "filePath": "<file_path>",
                   "issueDescription": "<short_description>",
                   "whyIssue": "<why_this_is_an_issue>",
-                  "fix": ["<optional_fix_or_code_snippet>"]
+                  "fix": "<optional_fix_or_code_snippet_as_array>"
                 }
               ]
+              If there are no issues, respond with:
+              { "status": "pass" }
               `;
 
               try {
@@ -120,21 +110,24 @@ jobs:
                   n: 1,
                 });
 
-                const feedbackContent = response.choices[0]?.message?.content;
+                const feedbackContent = response.choices[0].message.content;
+
+                if (feedbackContent.trim() === '{ "status": "pass" }') {
+                  console.log(`No issues found for ${filePath}`);
+                  continue;
+                }
 
                 const parsedFeedback = JSON.parse(feedbackContent);
-
-                if (Array.isArray(parsedFeedback) && parsedFeedback.length > 0) {
-                  parsedFeedback.forEach((item) => {
-                    feedbacks.push({ ...item, commitId: null });
-                  });
-                }
+                parsedFeedback.forEach(item => {
+                  feedbacks.push({ ...item, commitId: null });
+                });
               } catch (error) {
-                console.error(`Error while generating feedback for ${filePath}:`, error.message);
+                console.error(`Error processing feedback for ${filePath}:`, error.message);
               }
             }
 
-            feedbacks.forEach((feedback) => {
+            // Add commit hashes for each feedback entry
+            feedbacks.forEach(feedback => {
               try {
                 const command = `git blame -L ${feedback.line},${feedback.line} --line-porcelain -- ${feedback.filePath} | head -n 1 | awk '{print $1}'`;
                 feedback.commitId = execSync(command).toString().trim();
@@ -145,7 +138,7 @@ jobs:
 
             fs.writeFileSync('feedbacks.json', JSON.stringify(feedbacks, null, 2));
           } catch (error) {
-            console.error('Error during feedback generation:', error);
+            console.error('Error generating feedback:', error);
             process.exit(1);
           }
         }
@@ -176,8 +169,8 @@ jobs:
               const body = `
                 **Issue**: ${issueDescription}
                 **Why it's an issue**: ${whyIssue}
-                ${fix ? `**Suggested Fix**:\n\n\`
-                ${fix.join('\n')}\n\\`` : ''}`;
+                ${Array.isArray(fix) && fix.length > 0 ? `**Suggested Fix**:\n\`\`\`\n${fix.join('\n')}\n\`\`\`` : ''}
+              `;
 
               console.log(`Posting comment for ${filePath} at line ${line}, commit ${commitId}`);
 

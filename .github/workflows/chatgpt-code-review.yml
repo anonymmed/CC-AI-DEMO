@@ -33,7 +33,7 @@ jobs:
           ${{ runner.os }}-node-
 
     - name: Install Dependencies
-      run: npm install openai @octokit/rest@18.12.0 esprima
+      run: npm install openai @octokit/rest@18.12.0
 
     - name: Fetch PR Diff
       id: get_diff
@@ -49,7 +49,6 @@ jobs:
         const fs = require('fs');
         const { execSync } = require('child_process');
         const { OpenAI } = require('openai');
-        const esprima = require('esprima');
 
         const openai = new OpenAI({
           apiKey: process.env.OPENAI_API_KEY,
@@ -57,6 +56,9 @@ jobs:
 
         const rulesPath = '.github/rules.json';
         const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
+
+        const CHUNK_MIN_SIZE = 300;
+        const CHUNK_MAX_SIZE = 2000;
 
         async function generateFeedback() {
           try {
@@ -86,39 +88,12 @@ jobs:
               .filter(Boolean); // Remove null values
 
             const feedbacks = [];
-            const CHUNK_MIN_SIZE = 300; // Minimum character size for a chunk
 
             for (const { filePath, position, addedLines } of changes) {
-              const code = addedLines.join('\n');
-              let parsed;
+              const chunks = splitByLogicalBoundaries(addedLines);
 
-              try {
-                parsed = esprima.parseScript(code, { range: true });
-              } catch (error) {
-                console.error(`Failed to parse ${filePath}:`, error.message);
-                continue;
-              }
-
-              let chunkBuffer = '';
-
-              for (const node of parsed.body) {
-                const start = node.range[0];
-                const end = node.range[1];
-                const logicalChunk = code.slice(start, end);
-
-                // Accumulate chunks until reaching the minimum size
-                if (chunkBuffer.length < CHUNK_MIN_SIZE) {
-                  chunkBuffer += '\n' + logicalChunk;
-                } else {
-                  // Send the accumulated chunk to GPT and reset the buffer
-                  await processChunk(chunkBuffer, filePath, rules, feedbacks);
-                  chunkBuffer = logicalChunk; // Start a new buffer with the current logical chunk
-                }
-              }
-
-              // Process any remaining chunk in the buffer
-              if (chunkBuffer.trim()) {
-                await processChunk(chunkBuffer, filePath, rules, feedbacks);
+              for (const chunk of chunks) {
+                await processChunk(chunk, filePath, rules, feedbacks);
               }
             }
 
@@ -137,6 +112,31 @@ jobs:
             console.error('Error generating feedback:', error);
             process.exit(1);
           }
+        }
+
+        function splitByLogicalBoundaries(addedLines) {
+          const code = addedLines.join('\n');
+          const lines = code.split('\n');
+          const chunks = [];
+          let chunkBuffer = '';
+
+          for (const line of lines) {
+            chunkBuffer += line + '\n';
+
+            // Check for logical boundaries or chunk size
+            if (line.match(/(public|private|protected|internal).*?\(.*?\)/) ||
+                line.match(/class .*?/) ||
+                chunkBuffer.length >= CHUNK_MAX_SIZE) {
+              chunks.push(chunkBuffer);
+              chunkBuffer = '';
+            }
+          }
+
+          if (chunkBuffer.trim()) {
+            chunks.push(chunkBuffer); // Add remaining lines
+          }
+
+          return chunks;
         }
 
         async function processChunk(chunk, filePath, rules, feedbacks) {

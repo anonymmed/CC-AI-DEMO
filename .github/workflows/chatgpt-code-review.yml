@@ -57,10 +57,10 @@ jobs:
         async function generateFeedback() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
-            const rulesPath = '.github/rules.md';
+            const rulesPath = '.github/rules.json';
 
             if (!fs.existsSync(rulesPath)) {
-              console.error('Rules file not found at .github/rules.md');
+              console.error('Rules file not found at .github/rules.json');
               process.exit(1);
             }
 

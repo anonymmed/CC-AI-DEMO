@@ -54,38 +54,14 @@ jobs:
           apiKey: process.env.OPENAI_API_KEY,
         });
 
-        async function callGPTWithRetry(prompt, retries = 3) {
-          let attempt = 0;
-          while (attempt < retries) {
-            try {
-              const response = await openai.chat.completions.create({
-                model: 'gpt-4',
-                messages: [{ role: 'user', content: prompt }],
-                max_tokens: 1000,
-                n: 1,
-              });
-              const content = response.choices[0].message.content;
-              try {
-                const parsedContent = JSON.parse(content);
-                return parsedContent; // Return parsed JSON if valid
-              } catch (err) {
-                console.error(`Invalid JSON response. Attempt ${attempt + 1}/${retries}:`, content);
-              }
-            } catch (apiError) {
-              console.error(`API call failed. Attempt ${attempt + 1}/${retries}:`, apiError.message);
-            }
-            attempt++;
-          }
-          throw new Error('Failed to get a valid response from GPT after multiple attempts.');
-        }
-
         async function generateFeedback() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
 
-            const changes = diff.split('diff --git')
+            const changes = diff
+              .split('diff --git')
               .slice(1)
-              .map(change => {
+              .map((change) => {
                 const lines = change.split('\n');
                 const filePathMatch = lines[0]?.match(/b\/(\S+)/);
                 const filePath = filePathMatch ? filePathMatch[1] : null;
@@ -94,9 +70,9 @@ jobs:
                   return null; // Skip invalid or workflow files
                 }
 
-                const header = lines.find(line => line.startsWith('@@'));
+                const header = lines.find((line) => line.startsWith('@@'));
                 const position = header ? parseInt(header.match(/\+(\d+)/)?.[1], 10) : null;
-                const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));
+                const addedLines = lines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).map((line) => line.slice(1));
 
                 if (!position || addedLines.length === 0) {
                   return null; // Skip invalid changes
@@ -110,44 +86,55 @@ jobs:
 
             for (const { filePath, position, addedLines } of changes) {
               const prompt = `
-              Review the following changes in the filePath \`${filePath}\`:
+              You are a code review assistant. Provide feedback for the following changes by returning arguments for the review function strictly in JSON format:
+
+              Function to simulate:
+              review(line: number, filePath: string, issueDescription: string, whyIssue: string, fix?: string[]): void;
+
+              Changes:
+              File Path: ${filePath}
+              Lines:
               ${addedLines.join('\n')}
 
-              Respond strictly in the following JSON format. Do not include any additional text or explanations. Only provide valid JSON:
+              Rules:
+              1. Respond strictly with JSON representing the parameters for the review function.
+              2. Return an empty array [] if no issues are found.
+
+              Example valid JSON response:
               [
                 {
                   "line": <line_number>,
                   "filePath": "<file_path>",
                   "issueDescription": "<short_description>",
                   "whyIssue": "<why_this_is_an_issue>",
-                  "fix": "<optional_fix_or_code_snippet>"
+                  "fix": ["<optional_fix_or_code_snippet>"]
                 }
               ]
-              If there are no issues, respond with:
-              { "status": "pass" }
               `;
 
-              const maxTokens = Math.max(1000 - Math.ceil(prompt.length / 4), 50);
-              console.log(`Dynamic max_tokens: ${maxTokens}`);
-
               try {
-                const parsedFeedback = await callGPTWithRetry(prompt);
-
-                if (parsedFeedback.status === 'pass') {
-                  console.log(`No issues found for ${filePath}`);
-                  continue;
-                }
-
-                parsedFeedback.forEach(item => {
-                  feedbacks.push({ ...item, commitId: null });
+                const response = await openai.chat.completions.create({
+                  model: 'gpt-4',
+                  messages: [{ role: 'user', content: prompt }],
+                  max_tokens: Math.max(1000 - Math.ceil(prompt.length / 4), 50),
+                  n: 1,
                 });
+
+                const feedbackContent = response.choices[0]?.message?.content;
+
+                const parsedFeedback = JSON.parse(feedbackContent);
+
+                if (Array.isArray(parsedFeedback) && parsedFeedback.length > 0) {
+                  parsedFeedback.forEach((item) => {
+                    feedbacks.push({ ...item, commitId: null });
+                  });
+                }
               } catch (error) {
-                console.error(`Failed to process feedback for ${filePath}:`, error.message);
+                console.error(`Error while generating feedback for ${filePath}:`, error.message);
               }
             }
 
-            // Add commit hashes for each feedback entry
-            feedbacks.forEach(feedback => {
+            feedbacks.forEach((feedback) => {
               try {
                 const command = `git blame -L ${feedback.line},${feedback.line} --line-porcelain -- ${feedback.filePath} | head -n 1 | awk '{print $1}'`;
                 feedback.commitId = execSync(command).toString().trim();
@@ -189,7 +176,8 @@ jobs:
               const body = `
                 **Issue**: ${issueDescription}
                 **Why it's an issue**: ${whyIssue}
-                ${fix ? `**Suggested Fix**:\n\`\`\`\n${fix}\n\`\`\`` : ''}
+                ${fix ? `**Suggested Fix**:\n\n\`
+                ${fix.join('\n')}\n\\`` : ''}
               `;
 
               console.log(`Posting comment for ${filePath} at line ${line}, commit ${commitId}`);

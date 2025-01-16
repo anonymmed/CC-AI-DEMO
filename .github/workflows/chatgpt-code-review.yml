@@ -87,54 +87,63 @@ jobs:
             const feedbacks = [];
 
             for (const { filePath, position, addedLines } of changes) {
-              const messages = [
-                {
-                  "role": "system",
-                  "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. when returning the review don't mention the broken rules, and if part of function or function breaks multiple rules include the whyIssue and fix together instead of sending them separately in different objects.`
-                },
-                {
-                  "role": "user",
-                  "content": `
-                  Review the following changes in the filePath \`${filePath}\`:
-                  ${addedLines.join('\n')}
+              const chunkSize = 800;
+              for (let i = 0; i < addedLines.length; i += chunkSize) {
+                const chunk = addedLines.slice(i, i + chunkSize).join('\n');
+                const messages = [
+                  {
+                    "role": "system",
+                    "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. When returning the review, don't mention the broken rules, and if a part of a function or function breaks multiple rules, include the whyIssue and fix together instead of sending them separately in different objects.`
+                  },
+                  {
+                    "role": "user",
+                    "content": `
+                    Review the following changes in the filePath \`${filePath}\`:
+                    ${chunk}
 
-                  Respond strictly in the following JSON format:
-                  [
-                    {
-                      "line": the line number in diff where you found the issue,
-                      "filePath": "<file_path>",
-                      "issueDescription": "<short_description>",
-                      "whyIssue": "<why_this_is_an_issue>",
-                      "fix": "<code_snippet>"
-                    }
-                  ]
-                  If there are no issues, respond with:
-                  { "status": "pass" }
-                  `
+                    Respond strictly in the following JSON format:
+                    [
+                      {
+                        "line": the line number in diff where you found the issue,
+                        "filePath": "<file_path>",
+                        "issueDescription": "<short_description>",
+                        "whyIssue": "<why_this_is_an_issue>",
+                        "fix": "<code_snippet>"
+                      }
+                    ]
+                    If there are no issues, respond with:
+                    { "status": "pass" }
+                    `
+                  }
+                ];
+
+                try {
+                  const response = await openai.chat.completions.create({
+                    model: 'gpt-4',
+                    messages,
+                    max_tokens: Math.min(4000 - Math.ceil(messages[1].content.length / 4), 1000),
+                    n: 1,
+                  });
+
+                  const feedbackContent = response.choices[0].message.content;
+                  console.log(`Raw GPT Response:`, feedbackContent);
+
+                  if (feedbackContent.trim() === '{ "status": "pass" }') {
+                    console.log(`No issues found for ${filePath}`);
+                    continue;
+                  }
+
+                  try {
+                    const parsedFeedback = JSON.parse(feedbackContent);
+                    parsedFeedback.forEach(item => {
+                      feedbacks.push({ ...item, commitId: null });
+                    });
+                  } catch (jsonError) {
+                    console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
+                  }
+                } catch (error) {
+                  console.error(`Error processing feedback for ${filePath}:`, error.message);
                 }
-              ];
-
-              try {
-                const response = await openai.chat.completions.create({
-                  model: 'gpt-4',
-                  messages,
-                  max_tokens: Math.max(1000 - Math.ceil(messages[1].content.length / 4), 50),
-                  n: 1,
-                });
-
-                const feedbackContent = response.choices[0].message.content;
-
-                if (feedbackContent.trim() === '{ "status": "pass" }') {
-                  console.log(`No issues found for ${filePath}`);
-                  continue;
-                }
-
-                const parsedFeedback = JSON.parse(feedbackContent);
-                parsedFeedback.forEach(item => {
-                  feedbacks.push({ ...item, commitId: null });
-                });
-              } catch (error) {
-                console.error(`Error processing feedback for ${filePath}:`, error.message);
               }
             }
 
@@ -185,7 +194,7 @@ jobs:
             });
 
             for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
-              const body = `${whyIssue} \n ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
+              const body = `${whyIssue} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
 
               // Check for duplicates based on filePath, line, and issueDescription
               const commentExists = existingComments.data.some(
@@ -209,7 +218,7 @@ jobs:
                   pull_number,
                   body,
                   path: filePath,
-                  position: line+1,
+                  position: line + 1,
                   commit_id: commitId,
                 });
                 console.log(`Comment posted for ${filePath} at line ${line}`);
@@ -222,8 +231,9 @@ jobs:
             process.exit(1);
           }
         }
-
+    
         postComments();
         EOF
-
+    
         node post_comments.js
+    

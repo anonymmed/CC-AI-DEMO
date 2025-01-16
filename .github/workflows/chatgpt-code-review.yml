@@ -48,11 +48,8 @@ jobs:
 
         function getCommitHash(filePath, lineNumber) {
           try {
-            // Corrected command to retrieve the hash
-            const command = `git blame -L ${lineNumber},${lineNumber} -- ${filePath}`;
-            const blameOutput = execSync(command).toString().trim();
-            const hashMatch = blameOutput.match(/^([a-f0-9]{40})/);
-            return hashMatch ? hashMatch[1] : null;
+            const command = `git blame -L ${lineNumber},${lineNumber} --line-porcelain -- ${filePath} | head -n 1 | awk '{print $1}'`;
+            return execSync(command).toString().trim();
           } catch (error) {
             console.error(`Failed to get commit hash for ${filePath} at line ${lineNumber}:`, error.message);
             return null;
@@ -74,8 +71,6 @@ jobs:
               return { filePath, position, addedLines, commitId };
             }).filter(change => change.filePath && change.addedLines.length > 0);
 
-            console.log('Parsed changes with commit IDs:', changes);
-
             const feedbacks = [];
 
             for (const { filePath, position, addedLines, commitId } of changes) {
@@ -87,7 +82,6 @@ jobs:
               `;
 
               const maxTokens = Math.max(1000 - Math.ceil(prompt.length / 4), 50);
-              console.log(`Dynamic max_tokens: ${maxTokens}`);
 
               try {
                 const response = await openai.chat.completions.create({

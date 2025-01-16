@@ -36,7 +36,6 @@ jobs:
       id: generate_feedback
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        PR_NUMBER: ${{ github.event.number }}
       run: |
         cat <<'EOF' > generate_feedback.js
         const fs = require('fs');
@@ -128,6 +127,7 @@ jobs:
     - name: Post Inline Comments
       env:
         GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+        PR_NUMBER: ${{ github.event.number }}
       run: |
         cat <<'EOF' > post_comments.js
         const fs = require('fs');
@@ -139,15 +139,15 @@ jobs:
           try {
             const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
-
+            const pull_number = process.env.PR_NUMBER;
             for (const { filePath, position, commitId, body } of feedbacks) {
-              console.log(`Posting comment for owner ${owner}, repo: ${repo}, pull number: ${PR_NUMBER} , path : ${filePath} at position ${position} for commit ${commitId}`);
+              console.log(`Posting comment for owner ${owner}, repo: ${repo}, pull number: ${pull_number} , path : ${filePath} at position ${position} for commit ${commitId}`);
 
               try {
                 await octokit.pulls.createReviewComment({
                   owner,
                   repo,
-                  pull_number: PR_NUMBER,
+                  pull_number,
                   body,
                   path: filePath,
                   position,

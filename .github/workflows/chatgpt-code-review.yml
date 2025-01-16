@@ -100,7 +100,7 @@ jobs:
                 {
                   "role": "user",
                   "content": `
-                  Review the following changes in the filePath \\`${filePath}\\`:
+                  Review the following changes in the filePath ${filePath}:
                   ${addedLines.join('\n')}
 
                   Respond strictly in the following JSON format:

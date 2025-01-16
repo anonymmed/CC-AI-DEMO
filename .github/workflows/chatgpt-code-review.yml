@@ -84,53 +84,52 @@ jobs:
             const feedbacks = [];
 
             for (const { filePath, position, addedLines } of changes) {
-              const prompt = `
-              Review the following changes in the filePath \`${filePath}\`:
-              ${addedLines.join('\n')}
-
-              Respond strictly in the following JSON format. Do not include any additional text or explanations. Only provide valid JSON:
-              [
+              const messages = [
                 {
-                  "line": <line_number>,
-                  "filePath": "<file_path>",
-                  "issueDescription": "<short_description>",
-                  "whyIssue": "<why_this_is_an_issue>",
-                  "fix": "<optional_fix_or_code_snippet_as_array>"
+                  "role": "system",
+                  "content": "You are an AI reviewing code. Always respond in valid JSON format as described. Do not include any explanations or comments outside the JSON."
+                },
+                {
+                  "role": "user",
+                  "content": `
+                  Review the following changes in the filePath \`${filePath}\`:
+                  ${addedLines.join('\n')}
+
+                  Respond strictly in the following JSON format:
+                  [
+                    {
+                      "line": <line_number>,
+                      "filePath": "<file_path>",
+                      "issueDescription": "<short_description>",
+                      "whyIssue": "<why_this_is_an_issue>",
+                      "fix": "<optional_fix_or_code_snippet_as_array>"
+                    }
+                  ]
+                  If there are no issues, respond with:
+                  { "status": "pass" }
+                  `
                 }
-              ]
-              If there are no issues, respond with:
-              { "status": "pass" }
-              `;
+              ];
 
               try {
                 const response = await openai.chat.completions.create({
                   model: 'gpt-4',
-                  messages: [{ role: 'user', content: prompt }],
-                  max_tokens: Math.max(1000 - Math.ceil(prompt.length / 4), 50),
+                  messages,
+                  max_tokens: Math.max(1000 - Math.ceil(messages[1].content.length / 4), 50),
                   n: 1,
                 });
 
-                const feedbackContent = response.choices[0].message.content.trim();
+                const feedbackContent = response.choices[0].message.content;
 
-                if (feedbackContent === '{ "status": "pass" }') {
+                if (feedbackContent.trim() === '{ "status": "pass" }') {
                   console.log(`No issues found for ${filePath}`);
                   continue;
                 }
 
-                let parsedFeedback;
-                try {
-                  parsedFeedback = JSON.parse(feedbackContent);
-                  if (Array.isArray(parsedFeedback)) {
-                    parsedFeedback.forEach(item => {
-                      feedbacks.push({ ...item, commitId: null });
-                    });
-                  } else {
-                    throw new Error('Response is not an array');
-                  }
-                } catch (error) {
-                  console.error(`Invalid JSON response for ${filePath}:`, feedbackContent);
-                  continue;
-                }
+                const parsedFeedback = JSON.parse(feedbackContent);
+                parsedFeedback.forEach(item => {
+                  feedbacks.push({ ...item, commitId: null });
+                });
               } catch (error) {
                 console.error(`Error processing feedback for ${filePath}:`, error.message);
               }

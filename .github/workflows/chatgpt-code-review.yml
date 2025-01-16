@@ -105,7 +105,7 @@ jobs:
                       "filePath": "<file_path>",
                       "issueDescription": "<short_description>",
                       "whyIssue": "<why_this_is_an_issue>",
-                      "fix": "<optional_fix_or_code_snippet_as_array>"
+                      "fix": "<code_snippet_as_array>"
                     }
                   ]
                   If there are no issues, respond with:
@@ -186,9 +186,8 @@ jobs:
 
             for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
               const body = `
-                **Issue**: ${issueDescription}
-                **Why it's an issue**: ${whyIssue}
-                ${Array.isArray(fix) && fix.length > 0 ? '**Suggested Fix**:\n```' + fix.join('\n') + '\n```' : ''}
+                ${whyIssue}
+                ${Array.isArray(fix) && fix.length > 0 ? '\n```csharp' + fix.join('\n') + '\n```' : ''}
               `;
 
               // Check for duplicates based on filePath, line, and issueDescription

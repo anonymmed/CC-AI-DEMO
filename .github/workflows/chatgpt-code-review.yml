@@ -100,22 +100,22 @@ jobs:
 
             for (const { filePath, position, addedLines } of changes) {
               const prompt = `
-                Review the following changes in the filePath \`${filePath}\`:
-                ${addedLines.join('\n')}
+              Review the following changes in the filePath \`${filePath}\`:
+              ${addedLines.join('\n')}
 
-                Respond in this strict JSON format:
-                [
-                  {
-                    "line": <line_number>,
-                    "filePath": "<file_path>",
-                    "issueDescription": "<short_description>",
-                    "whyIssue": "<why_this_is_an_issue>",
-                    "fix": "<optional_fix_or_code_snippet>"
-                  }
-                ]
-                If there are no issues, respond with:
-                { "status": "pass" }
-                Do not include any additional explanations or text outside the JSON response.
+              Respond strictly in the following JSON format. Do not include any additional text or explanations. Only provide valid JSON:
+              [
+                {
+                  "line": <line_number>,
+                  "filePath": "<file_path>",
+                  "issueDescription": "<short_description>",
+                  "whyIssue": "<why_this_is_an_issue>",
+                  "fix": "<optional_fix_or_code_snippet>"
+                }
+              ]
+              If there are no issues, respond with:
+              { "status": "pass" }
+              Remember: Only respond with JSON. Do not include any explanations, summaries, or other comments.
               `;
 
               const maxTokens = Math.max(1000 - Math.ceil(prompt.length / 4), 50);

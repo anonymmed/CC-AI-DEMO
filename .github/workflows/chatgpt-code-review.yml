@@ -64,33 +64,11 @@ jobs:
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
 
-            const changes = diff.split('diff --git')
-              .slice(1)
-              .map(change => {
-                const lines = change.split('\n');
-                const filePathMatch = lines[0]?.match(/b\/(\S+)/);
-                const filePath = filePathMatch ? filePathMatch[1] : null;
-
-                if (!filePath || filePath.includes('workflows/') || filePath.includes('rules')) {
-                  return null; // Skip invalid or workflow files
-                }
-
-                const header = lines.find(line => line.startsWith('@@'));
-                const position = header ? parseInt(header.match(/\+(\d+)/)?.[1], 10) : null;
-                const addedLines = lines.filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1));
-
-                if (!position || addedLines.length === 0) {
-                  return null; // Skip invalid changes
-                }
-
-                return { filePath, position, addedLines };
-              })
-              .filter(Boolean); // Remove null values
-
+            const changes = parseDiffWithLineNumbers(diff);
             const feedbacks = [];
 
-            for (const { filePath, position, addedLines } of changes) {
-              const chunks = splitByLogicalBoundaries(addedLines);
+            for (const { filePath, addedLinesWithNumbers } of changes) {
+              const chunks = chunkWithLineNumbers(addedLinesWithNumbers);
 
               for (const chunk of chunks) {
                 await processChunk(chunk, filePath, rules, feedbacks);
@@ -114,25 +92,48 @@ jobs:
           }
         }
 
-        function splitByLogicalBoundaries(addedLines) {
-          const code = addedLines.join('\n');
-          const lines = code.split('\n');
+        function parseDiffWithLineNumbers(diff) {
+          return diff.split('diff --git')
+            .slice(1)
+            .map(change => {
+              const lines = change.split('\n');
+              const filePathMatch = lines[0]?.match(/b\/(\S+)/);
+              const filePath = filePathMatch ? filePathMatch[1] : null;
+
+              if (!filePath || filePath.includes('workflows/') || filePath.includes('rules')) {
+                return null; // Skip invalid or workflow files
+              }
+
+              const header = lines.find(line => line.startsWith('@@'));
+              const match = header.match(/\+(\d+)/);
+              let currentLine = match ? parseInt(match[1], 10) : null;
+
+              const addedLinesWithNumbers = lines
+                .filter(line => line.startsWith('+') && !line.startsWith('+++'))
+                .map(line => ({ line: currentLine++, code: line.slice(1) })); // Extract code and increment line number
+
+              return { filePath, addedLinesWithNumbers };
+            })
+            .filter(Boolean);
+        }
+
+        function chunkWithLineNumbers(addedLinesWithNumbers, chunkMinSize = 300, chunkMaxSize = 2000) {
           const chunks = [];
-          let chunkBuffer = '';
+          let chunkBuffer = [];
+          let chunkSize = 0;
 
-          for (const line of lines) {
-            chunkBuffer += line + '\n';
+          for (const { line, code } of addedLinesWithNumbers) {
+            chunkBuffer.push({ line, code });
+            chunkSize += code.length;
 
-            // Check for logical boundaries or chunk size
-            if (line.match(/(public|private|protected|internal).*?\(.*?\)/) ||
-                line.match(/class .*?/) ||
-                chunkBuffer.length >= CHUNK_MAX_SIZE) {
+            if (chunkSize >= chunkMaxSize) {
               chunks.push(chunkBuffer);
-              chunkBuffer = '';
+              chunkBuffer = [];
+              chunkSize = 0;
             }
           }
 
-          if (chunkBuffer.trim()) {
+          if (chunkBuffer.length > 0) {
             chunks.push(chunkBuffer); // Add remaining lines
           }
 
@@ -140,21 +141,23 @@ jobs:
         }
 
         async function processChunk(chunk, filePath, rules, feedbacks) {
+          const formattedChunk = chunk.map(({ line, code }) => `Line ${line}: ${code}`).join('\n');
+
           const messages = [
             {
               "role": "system",
-              "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. When returning the review, don't mention the broken rules, and if a part of a function or function breaks multiple rules, include the whyIssue and fix together instead of sending them separately in different objects. And as a reviewer you need to make sure to provide the correct line number in the diff where you found the issue. so that the review solution will be displayed correctly next to the issue.`
+              "content": `You are an AI reviewing code. Always respond in valid JSON format...`
             },
             {
               "role": "user",
               "content": `
               Review the following changes in the filePath \`${filePath}\`:
-              ${chunk}
+              ${formattedChunk}
 
               Respond strictly in the following JSON format:
               [
                 {
-                  "line": the line number in diff where you found the issue,
+                  "line": the exact line number in the file where you found the issue,
                   "filePath": "<file_path>",
                   "issueDescription": "<short_description>",
                   "whyIssue": "<why_this_is_an_issue>",
@@ -171,8 +174,7 @@ jobs:
             const response = await openai.chat.completions.create({
               model: 'gpt-4',
               messages,
-              max_tokens: Math.min(4000 - Math.ceil(messages[1].content.length / 4), 1000),
-              n: 1,
+              max_tokens: 1000,
             });
 
             const feedbackContent = response.choices[0].message.content;
@@ -185,14 +187,12 @@ jobs:
 
             try {
               const parsedFeedback = JSON.parse(feedbackContent);
-              parsedFeedback.forEach(item => {
-                feedbacks.push({ ...item, commitId: null });
-              });
-            } catch (jsonError) {
-              console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
+              feedbacks.push(...parsedFeedback);
+            } catch (error) {
+              console.error(`Failed to parse GPT feedback:`, feedbackContent);
             }
           } catch (error) {
-            console.error(`Error processing feedback for ${filePath}:`, error.message);
+            console.error(`Error processing chunk for ${filePath}:`, error.message);
           }
         }
 
@@ -250,7 +250,7 @@ jobs:
                   pull_number,
                   body,
                   path: filePath,
-                  position: line + 1,
+                  position: line,
                   commit_id: commitId,
                 });
                 console.log(`Comment posted for ${filePath} at line ${line}`);

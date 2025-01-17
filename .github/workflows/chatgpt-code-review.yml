@@ -31,7 +31,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-node-
     - name: Install Dependencies
-      run: npm install openai @octokit/rest@18.12.0 esprima
+      run: npm install openai @octokit/rest@18.12.0
 
     - name: Fetch PR Diff
       id: get_diff
@@ -49,7 +49,7 @@ jobs:
         const openai = new OpenAI({
           apiKey: process.env.OPENAI_API_KEY,
         });
-        const rulesPath = '.github/rules.json';
+        const rulesPath = '.github/workflows/rules.json';
         const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
         const MAX_TOKENS = 4000;
         const AVERAGE_LINE_CHARACTERS = 80; // Approximate average line length

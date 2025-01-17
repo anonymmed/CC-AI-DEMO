@@ -273,29 +273,9 @@ jobs:
             const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const pull_number = process.env.PR_NUMBER;
-
-            console.log('Fetching existing comments...');
-            const existingComments = await octokit.pulls.listReviewComments({
-              owner,
-              repo,
-              pull_number,
-            });
-
+            
             for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
               const body = `${whyIssue}  in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
-
-              // Check for duplicates based on filePath, line, and issueDescription
-              const commentExists = existingComments.data.some(
-                (comment) =>
-                  comment.path === filePath &&
-                  comment.position === line &&
-                  comment.body.includes(issueDescription)
-              );
-
-              if (commentExists) {
-                console.log(`Skipping duplicate comment for ${filePath} at line ${line}`);
-                continue;
-              }
 
               console.log(`Posting comment for ${filePath} at line ${line}, commit ${commitId}`);
 

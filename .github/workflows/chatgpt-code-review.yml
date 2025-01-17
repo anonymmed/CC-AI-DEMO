@@ -35,18 +35,14 @@ jobs:
     - name: Install Dependencies
       run: npm install openai @octokit/rest@18.12.0 ws esprima
 
-    - name: Fetch PR Diff
-      id: get_diff
-      run: |
-        git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
-
     - name: Generate ChatGPT Feedback
       id: generate_feedback
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
       run: |
         cat <<'EOF' > generate_feedback.js
-        const fs = require('fs');
+        const { execSync } = require('child_process');
         const crypto = require('crypto');
         const WebSocket = require('ws');
         const { Octokit } = require('@octokit/rest');
@@ -150,11 +146,11 @@ jobs:
         };
 
         const processDiff = async () => {
-          const diff = fs.readFileSync('pr_diff.txt', 'utf8');
+          const diff = execSync(`git diff origin/${process.env.GITHUB_BASE_REF}`).toString();
           const changes = diff.split('diff --git')
             .slice(1)
             .map(change => {
-              const lines = change.split('\\n');
+              const lines = change.split('\n');
               const filePathMatch = lines[0]?.match(/b\/([\S]+)/);
               const filePath = filePathMatch ? filePathMatch[1] : null;
 
@@ -196,11 +192,3 @@ jobs:
         processDiff();
         EOF
         node generate_feedback.js
-  
-
-    - name: Post Inline Comments
-      env:
-        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
-        PR_NUMBER: ${{ github.event.number }}
-      run: |
-        echo "Inline comments posted as responses were received."

@@ -54,42 +54,44 @@ jobs:
         }
 
         const connectToRealtimeAPI = () => {
-          const url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17";
-          const ws = new WebSocket(url, {
-            headers: {
-              "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-              "OpenAI-Beta": "realtime=v1",
-            },
-          });
+          return new Promise((resolve, reject) => {
+            const url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17";
+            const ws = new WebSocket(url, {
+              headers: {
+                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+                "OpenAI-Beta": "realtime=v1",
+              },
+            });
 
-          ws.on("open", () => {
-            console.log("Connected to Realtime API.");
-          });
+            ws.on("open", () => {
+              console.log("Connected to Realtime API.");
+              resolve(ws);
+            });
 
-          ws.on("message", (message) => {
-            const event = JSON.parse(message);
+            ws.on("error", (error) => {
+              console.error("WebSocket error:", error.message);
+              reject(error);
+            });
 
-            if (event.type === "response.text.done") {
-              const response = JSON.parse(event.response.output[0].content[0].text);
+            ws.on("close", () => {
+              console.log("Connection closed.");
+            });
 
-              if (response.last) {
-                console.log("All issues processed. Closing connection.");
-                ws.close();
-              } else {
-                postInlineComment(response); // Post inline comment for each issue
+            ws.on("message", (message) => {
+              const event = JSON.parse(message);
+
+              if (event.type === "response.text.done") {
+                const response = JSON.parse(event.response.output[0].content[0].text);
+
+                if (response.last) {
+                  console.log("All issues processed. Closing connection.");
+                  ws.close();
+                } else {
+                  postInlineComment(response); // Post inline comment for each issue
+                }
               }
-            }
+            });
           });
-
-          ws.on("close", () => {
-            console.log("Connection closed.");
-          });
-
-          ws.on("error", (error) => {
-            console.error("WebSocket error:", error.message);
-          });
-
-          return ws;
         };
 
         const sendPrompt = (ws, globalHash, chunkHash, previousHash, filePath, chunk, isLastPrompt) => {
@@ -171,7 +173,7 @@ jobs:
             .filter(Boolean);
 
           let previousChunkHash = null;
-          const ws = connectToRealtimeAPI();
+          const ws = await connectToRealtimeAPI();
 
           for (const { filePath, addedLines } of changes) {
             let chunk = [];

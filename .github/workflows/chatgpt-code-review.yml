@@ -222,10 +222,6 @@ jobs:
                   });
 
                   const feedbackContent = response.choices[0].message.content;
-                  console.log(`GPT Prompt is :`, messages);
-                  console.log('##############################################');
-                  console.log(`Raw GPT Response:`, feedbackContent);
-
                   if (feedbackContent.trim() === '{ "status": "pass" }') {
                     console.log(`No issues found for ${filePath}`);
                     continue;

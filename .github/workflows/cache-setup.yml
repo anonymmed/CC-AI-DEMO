@@ -1,0 +1,24 @@
+name: Reset Reviewed Commits Cache
+
+on:
+  workflow_dispatch:  # This ensures the workflow is only run manually
+
+permissions:
+  contents: write  # Necessary to save the cache
+
+jobs:
+  reset_cache:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create Cache Directory
+        run: mkdir -p ./cache
+
+      - name: Save Empty Reviewed Commits
+        run: echo "[]" > ./cache/reviewed_commits.json
+
+      - name: Save Cache for Reviewed Commits
+        uses: actions/cache@v3
+        with:
+          path: ./cache
+          key: reviewed-commits-${{ github.event.pull_request.number }}

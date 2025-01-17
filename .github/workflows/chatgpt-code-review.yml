@@ -33,7 +33,7 @@ jobs:
           ${{ runner.os }}-node-
 
     - name: Install Dependencies
-      run: npm install openai @octokit/rest@18.12.0 ws esprima
+      run: npm install openai @octokit/rest@18.12.0 ws
 
     - name: Generate ChatGPT Feedback
       id: generate_feedback
@@ -69,8 +69,6 @@ jobs:
 
           ws.on("message", (message) => {
             const event = JSON.parse(message.toString());
-            console.log("Received message from server:", event);
-
             if (event.type === "response.text.done") {
               try {
                 const response = JSON.parse(event.response?.output?.[0]?.content?.[0]?.text || '{}');
@@ -80,15 +78,11 @@ jobs:
                   console.log("All issues processed. Closing connection.");
                   ws.close();
                 } else {
-                  postInlineComment(response); // Post inline comment for each issue
+                  postInlineComment(response);
                 }
               } catch (err) {
                 console.error("Error parsing response:", err.message);
               }
-            }
-
-            if (event.type === "error") {
-              console.error("Error from server:", event.error);
             }
           });
 
@@ -128,18 +122,26 @@ jobs:
               modalities: ["text"],
               instructions: `
                 - Analyze the provided code changes.
-                - Identify one issue at a time.
-                - Respond in JSON format with: line number, file path, issue description, why it is an issue, and a suggested fix.
+                - Use the rules provided below to evaluate the code.
+                - Identify one issue at a time and respond in JSON format with:
+                  line number, file path, commit hash, issue description, why it is an issue, and a suggested fix.
+                - Rules:
+                  1. All functions must have a summary comment or inheritdoc.
+                  2. Avoid using 'SELECT *' in SQL queries; specify the columns explicitly.
+                  3. Use PascalCase for method names in C#.
+                  4. Avoid using string literals in nameof(); always reference variables directly.
+                  5. All 'if' statements must use curly brackets.
                 - Example response:
                   {
                     "line": 42,
                     "filePath": "main.cs",
+                    "commitHash": "abcd1234",
                     "issueDescription": "Avoid hardcoding values.",
                     "whyIssue": "Hardcoded values are difficult to maintain.",
                     "fix": "Use constants instead.",
                     "last": false
                   }
-                - Include "last: true" in the final response to indicate all issues have been processed.
+                - Include "last: true" in the final response.
               `,
             },
           };
@@ -149,7 +151,7 @@ jobs:
 
         const postInlineComment = async (issue) => {
           const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-          const { filePath, line, issueDescription, whyIssue, fix } = issue;
+          const { filePath, line, commitHash, issueDescription, whyIssue, fix } = issue;
 
           try {
             await octokit.pulls.createReviewComment({
@@ -158,6 +160,7 @@ jobs:
               pull_number: process.env.PR_NUMBER,
               body: `${issueDescription}\n\n${whyIssue}\n\nSuggested Fix:\n\n\`${fix}\``,
               path: filePath,
+              commit_id: commitHash,
               position: line,
             });
             console.log(`Comment posted for ${filePath} at line ${line}`);
@@ -180,9 +183,12 @@ jobs:
               const addedLines = [];
               lines.forEach((line, index) => {
                 if (line.startsWith('+') && !line.startsWith('+++')) {
+                  const blame = execSync(`git blame -L ${index + 1},${index + 1} -- ${filePath}`).toString();
+                  const commitHash = blame.split(' ')[0];
                   addedLines.push({
                     lineNumber: index + 1,
                     lineDiff: line.slice(1),
+                    commitHash,
                   });
                 }
               });
@@ -191,25 +197,12 @@ jobs:
             })
             .filter(Boolean);
 
-          let delay = 0;
-
-          for (const { filePath, addedLines } of changes) {
-            for (let i = 0; i < addedLines.length; i += 50) { // Consolidate chunks into ~50 lines each
-              const chunk = addedLines.slice(i, i + 50);
-              const content = JSON.stringify(chunk, null, 2);
-
-              setTimeout(() => {
-                addItemToConversation(ws, content, () => {
-                  console.log("Prompt sent for chunk:", chunk);
-                  if (i + 50 >= addedLines.length) {
-                    requestResponse(ws);
-                  }
-                });
-              }, delay);
-
-              delay += 1500; // Add delay to avoid rate limits
-            }
-          }
+          changes.forEach(change => {
+            const content = JSON.stringify(change, null, 2);
+            addItemToConversation(ws, content, () => {
+              requestResponse(ws);
+            });
+          });
         };
 
         connectToRealtimeAPI();

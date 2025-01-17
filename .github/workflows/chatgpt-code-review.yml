@@ -152,6 +152,11 @@ jobs:
               type: "input_text",
               text: `Review the changes in ${change.filePath}:\n${JSON.stringify(change.addedLines, null, 2)}\nRespond in JSON format:\n[\n  {\n    "line": <line_number>,\n    "filePath": "<file_path>",\n    "issueDescription": "<short_description>",\n    "whyIssue": "<why_this_is_an_issue>",\n    "fix": "<code_snippet>",\n    "commitId": "<commit_id>"\n  }\n]\nIf no issues, respond with:\n{ "status": "pass" }${isLast ? ', "last": true' : ''}`,
             };
+            if(isLast) {
+              console.log("All changes processed. Sending final prompt.", userPrompt);
+            } else {
+             console.log("sending prompt:", userPrompt); 
+            }
 
             ws.send(
               JSON.stringify({

@@ -1,4 +1,4 @@
-name: ChatGPT Inline Code Review
+name: ChatGPT Inline Code Review (Real-Time)
 
 on:
   pull_request:
@@ -23,6 +23,7 @@ jobs:
       run: |
         git fetch origin ${{ github.event.pull_request.head.ref }}
         git checkout ${{ github.event.pull_request.head.ref }}
+
     - name: Cache Node.js Modules
       uses: actions/cache@v3
       with:
@@ -30,162 +31,173 @@ jobs:
         key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
         restore-keys: |
           ${{ runner.os }}-node-
-    - name: Install Dependencies
-      run: npm install openai @octokit/rest@18.12.0 ws esprima
 
-    - name: Generate ChatGPT Feedback
+    - name: Install Dependencies
+      run: npm install openai @octokit/rest@18.12.0 ws
+
+    - name: Generate ChatGPT Feedback (Real-Time)
       id: generate_feedback
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
       run: |
         cat <<'EOF' > generate_feedback.js
+        const fs = require('fs');
         const { execSync } = require('child_process');
-        const crypto = require('crypto');
         const WebSocket = require('ws');
         const { Octokit } = require('@octokit/rest');
-        const globalHash = crypto.randomBytes(16).toString('hex');
-        function generateHash(input) {
-          return crypto.createHash('sha256').update(input).digest('hex');
-        }
+
+        const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
         const connectToRealtimeAPI = () => {
-          const url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17";
-          const ws = new WebSocket(url, {
-            headers: {
-              "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-              "OpenAI-Beta": "realtime=v1",
-            },
+          const ws = new WebSocket("wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview", {
+            headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
           });
+
           ws.on("open", () => {
-            console.log("Connected to Realtime API.");
-            processDiff(ws);
+            console.log("WebSocket connection established.");
+            sendSystemPrompt(ws);
           });
+
           ws.on("message", (message) => {
             const event = JSON.parse(message.toString());
-            console.log("Received message from server:", event);
             if (event.type === "response.text.done") {
               try {
                 const response = JSON.parse(event.response?.output?.[0]?.content?.[0]?.text || '{}');
                 console.log("Processed response:", response);
+
                 if (response.last) {
-                  console.log("All issues processed. Closing connection.");
+                  console.log("Final response received. Closing WebSocket.");
                   ws.close();
                 } else {
-                  postInlineComment(response); // Post inline comment for each issue
+                  postInlineComment(response);
                 }
               } catch (err) {
                 console.error("Error parsing response:", err.message);
               }
             }
-            if (event.type === "error") {
-              console.error("Error from server:", event.error);
-            }
           });
+
           ws.on("close", () => {
-            console.log("Connection closed.");
+            console.log("WebSocket connection closed.");
           });
+
           ws.on("error", (error) => {
             console.error("WebSocket error:", error.message);
           });
+
           return ws;
         };
-        const addItemToConversation = (ws, content, callback) => {
-          const event = {
-            type: "conversation.item.create",
-            item: {
-              type: "message",
-              role: "user",
-              content: [
-                {
-                  type: "input_text",
-                  text: content,
-                },
-              ],
-            },
+
+        const sendSystemPrompt = (ws) => {
+          const rulesPath = '.github/workflows/rules.json';
+          const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
+
+          const systemPrompt = {
+            role: "system",
+            content: `You are an AI code reviewer. Use the following rules strictly to identify issues. Provide responses strictly in JSON format indicated by user. Do not respond until all prompts are sent, indicated by the final input marked with "last: true". All responses should include the correct line number and commit ID for each issue so the review solution will be displayed correctly next to the issue. Rules: ${JSON.stringify(rules)}.`,
           };
-          ws.send(JSON.stringify(event), callback);
-          console.log("Sent conversation.item.create:", event);
+
+          ws.send(
+            JSON.stringify({
+              type: "conversation.item.create",
+              item: { type: "message", role: "system", content: [systemPrompt] },
+            }),
+            () => {
+              console.log("System prompt sent. Starting diff processing...");
+              processDiff(ws);
+            }
+          );
         };
-        const requestResponse = (ws) => {
-          const event = {
-            type: "response.create",
-            response: {
-              modalities: ["text"],
-              instructions: `
-                - Analyze the provided code changes.
-                - Identify one issue at a time.
-                - Respond in JSON format with: line number, file path, issue description, why it is an issue, and a suggested fix.
-                - Example response:
-                  {
-                    "line": 42,
-                    "filePath": "main.cs",
-                    "issueDescription": "Avoid hardcoding values.",
-                    "whyIssue": "Hardcoded values are difficult to maintain.",
-                    "fix": "Use constants instead.",
-                    "last": false
-                  }
-                - Include "last: true" in the final response to indicate all issues have been processed.
-              `,
-            },
-          };
-          ws.send(JSON.stringify(event));
-          console.log("Sent response.create event.");
-        };
-        const postInlineComment = async (issue) => {
-          const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-          const { filePath, line, issueDescription, whyIssue, fix } = issue;
-          try {
-            await octokit.pulls.createReviewComment({
-              owner: process.env.GITHUB_REPOSITORY.split('/')[0],
-              repo: process.env.GITHUB_REPOSITORY.split('/')[1],
-              pull_number: process.env.PR_NUMBER,
-              body: `${issueDescription}\n\n${whyIssue}\n\nSuggested Fix:\n\n\`${fix}\``,
-              path: filePath,
-              position: line,
-            });
-            console.log(`Comment posted for ${filePath} at line ${line}`);
-          } catch (error) {
-            console.error(`Failed to post comment: ${error.message}`);
-          }
-        };
+
         const processDiff = (ws) => {
           const diff = execSync(`git diff origin/${process.env.GITHUB_BASE_REF}`).toString();
           const changes = diff.split('diff --git')
             .slice(1)
             .map(change => {
               const lines = change.split('\n');
-              const filePathMatch = lines[0]?.match(/b\/([\S]+)/);
+              const filePathMatch = lines[0]?.match(/b\/(\S+)/);
               const filePath = filePathMatch ? filePathMatch[1] : null;
-              if (!filePath) return null;
+
+              if (!filePath || filePath.includes('workflows/')) {
+                return null; // Skip invalid or workflow files
+              }
+
+              const header = lines.find(line => line.startsWith('@@'));
+              const position = header ? parseInt(header.match(/\+([0-9]+)/)?.[1], 10) : null;
+
               const addedLines = [];
-              lines.forEach((line, index) => {
+              let lineCounter = position || 0;
+              for (const line of lines) {
                 if (line.startsWith('+') && !line.startsWith('+++')) {
+                  let commitId = 'unknown';
+                  try {
+                    commitId = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
+                  } catch (error) {
+                    console.error(`Failed to get commit hash for ${filePath} at line ${lineCounter}:`, error.message);
+                  }
                   addedLines.push({
-                    lineNumber: index + 1,
+                    lineNumber: lineCounter,
                     lineDiff: line.slice(1),
+                    commitId,
                   });
+                  lineCounter++;
                 }
-              });
+              }
               return { filePath, addedLines };
             })
             .filter(Boolean);
-          let delay = 0;
-          for (const { filePath, addedLines } of changes) {
-            for (let i = 0; i < addedLines.length; i += 50) { // Consolidate chunks into ~50 lines each
-              const chunk = addedLines.slice(i, i + 50);
-              const content = JSON.stringify(chunk, null, 2);
-              setTimeout(() => {
-                addItemToConversation(ws, content, () => {
-                  console.log("Prompt sent for chunk:", chunk);
-                  if (i + 50 >= addedLines.length) {
-                    requestResponse(ws);
-                  }
-                });
-              }, delay);
-              delay += 1500; // Add delay to avoid rate limits
-            }
+
+          changes.forEach((change, index) => {
+            const isLast = index === changes.length - 1;
+            const userPrompt = {
+              role: "user",
+              content: `Review the following changes in the filePath ${change.filePath}: ${JSON.stringify(change.addedLines, null, 2)} Respond strictly in the following JSON format:
+              [
+                {
+                  "line": <line_number>,
+                  "filePath": "<file_path>",
+                  "issueDescription": "<short_description>",
+                  "whyIssue": "<why_this_is_an_issue>",
+                  "fix": "<code_snippet>",
+                  "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
+                }
+              ]
+              If there are no issues, respond with:
+              { "status": "pass" } ${isLast ? ', "last": true' : ''}`,
+            };
+
+            ws.send(
+              JSON.stringify({
+                type: "conversation.item.create",
+                item: { type: "message", role: "user", content: [userPrompt] },
+              })
+            );
+          });
+        };
+
+        const postInlineComment = async (issue) => {
+          const { filePath, lineNumber, commitId, issueDescription, whyIssue, fix } = issue;
+          const pull_number = process.env.GITHUB_EVENT_PULL_REQUEST_NUMBER;
+          const body = `${issueDescription}\n\n${whyIssue}\n\nSuggested Fix:\n\n\`${fix}\``;
+          const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+
+          try {
+            await octokit.pulls.createReviewComment({
+              owner,
+              repo,
+              pull_number,
+              body,
+              path: filePath,
+              position: lineNumber,
+              commit_id: commitId,
+            });
+            console.log(`Comment posted for ${filePath} at line ${lineNumber}`);
+          } catch (error) {
+            console.error(`Failed to post comment for ${filePath}:${lineNumber}`, error.message);
           }
         };
+
         connectToRealtimeAPI();
         EOF
         node generate_feedback.js

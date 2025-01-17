@@ -47,43 +47,41 @@ jobs:
         const WebSocket = require('ws');
         const { Octokit } = require('@octokit/rest');
         const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+        let ws;
 
         const connectToRealtimeAPI = () => {
-          const ws = new WebSocket("wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview", {
+          ws = new WebSocket("wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview", {
             headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
           });
 
           ws.on("open", () => {
             console.log("Connected to Realtime API.");
-            sendSystemPrompt(ws);
+            sendSystemPrompt();
           });
 
           ws.on("message", (message) => {
-            const event = JSON.parse(message.toString());
-            if (event.type === "response.text.done") {
-              try {
+            try {
+              const event = JSON.parse(message.toString());
+              if (event.type === "response.text.done") {
                 const response = JSON.parse(event.response?.output?.[0]?.content?.[0]?.text || '{}');
                 console.log("Processed response:", response);
-
                 if (response.last) {
                   console.log("All issues processed. Closing connection.");
                   ws.close();
                 } else {
                   postInlineComment(response);
                 }
-              } catch (err) {
-                console.error("Error parsing response:", err.message);
               }
+            } catch (err) {
+              console.error("Error parsing message:", err.message);
             }
           });
 
-          ws.on("close", () => console.error("WebSocket closed unexpectedly."));
+          ws.on("close", () => console.log("WebSocket closed."));
           ws.on("error", (error) => console.error("WebSocket error:", error.message));
-
-          return ws;
         };
 
-        const sendSystemPrompt = (ws) => {
+        const sendSystemPrompt = () => {
           const rulesPath = '.github/workflows/rules.json';
           const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
           const systemPrompt = {
@@ -91,7 +89,6 @@ jobs:
             text: `You are an AI code reviewer. Use the following rules strictly to identify issues. Respond strictly in JSON format indicated by user prompts. Do not respond until all prompts are sent, indicated by the final input marked with "last: true". Include the correct line number and commit hash for each issue. Rules: ${JSON.stringify(rules)}.`,
           };
 
-          console.log("Sending system prompt.");
           ws.send(
             JSON.stringify({
               type: "conversation.item.create",
@@ -99,12 +96,12 @@ jobs:
             }),
             () => {
               console.log("System prompt sent. Starting diff processing...");
-              processDiff(ws);
+              processDiff();
             }
           );
         };
 
-        const processDiff = (ws) => {
+        const processDiff = () => {
           console.log("Processing diff...");
           const diff = execSync(`git diff origin/${process.env.GITHUB_BASE_REF}`).toString();
           const changes = diff.split('diff --git')
@@ -115,7 +112,7 @@ jobs:
               const filePath = filePathMatch ? filePathMatch[1] : null;
 
               if (!filePath || filePath.includes('workflows/')) {
-                return null; // Skip invalid or workflow files
+                return null;
               }
 
               const addedLines = [];
@@ -152,7 +149,7 @@ jobs:
             const isLast = index === changes.length - 1;
             const userPrompt = {
               type: "input_text",
-              text: `Review the changes in ${change.filePath}:\n${JSON.stringify(change.addedLines, null, 2)}\nRespond in JSON format:\n[\n  {\n    "line": <line_number>,\n    "filePath": "<file_path>",\n    "issueDescription": "<short_description>",\n    "whyIssue": "<why_this_is_an_issue>",\n    "fix": "<code_snippet>",\n    "commitId": "<commit_id>"\n  }\n]\nIf no issues, respond with:\n{ "status": "pass" }${isLast ? ', "last": true' : ''}`,
+              text: `Review the changes in ${change.filePath}:\n${JSON.stringify(change.addedLines, null, 2)}\nRespond in JSON format:\n[\n  {\n    "line": <line_number>,\n    "filePath": "<file_path>",\n    "issueDescription": "<short_description>",\n    "whyIssue": "<why_this_is_an_issue>",\n    "fix": "<code_snippet>",\n    "commitId": "<commit_id>"\n  }\n]\nIf no issues, respond with:\n{ "status": "pass" }${isLast ? ', "last": true' : ''}`.
             };
 
             ws.send(

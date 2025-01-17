@@ -178,12 +178,13 @@ jobs:
               const filePathMatch = lines[0]?.match(/b\/([\S]+)/);
               const filePath = filePathMatch ? filePathMatch[1] : null;
 
-              if (!filePath) return null;
+              // Skip files in the workflows directory
+              if (!filePath || filePath.includes('workflows/')) return null;
 
               const addedLines = [];
               lines.forEach((line, index) => {
                 if (line.startsWith('+') && !line.startsWith('+++')) {
-                  const blame = execSync(`git blame -L ${index + 1},${index + 1} -- ${filePath}`).toString();
+                  const blame = execSync(`git blame -L ${index + 1},${index + 1} --line-porcelain HEAD --  ${filePath} | head -n 1 | awk '{print $1}'`).toString();
                   const commitHash = blame.split(' ')[0];
                   addedLines.push({
                     lineNumber: index + 1,

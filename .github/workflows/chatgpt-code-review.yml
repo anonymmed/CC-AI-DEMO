@@ -47,9 +47,9 @@ jobs:
         const WebSocket = require('ws');
         const { Octokit } = require('@octokit/rest');
         const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-
+        let ws;
         const connectToRealtimeAPI = () => {
-          const ws = new WebSocket("wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview", {
+          ws = new WebSocket("wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview", {
             headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
           });
 

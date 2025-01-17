@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-permissions: 
+permissions:
   contents: write
   pull-requests: write
   repository-projects: write
@@ -46,7 +46,6 @@ jobs:
         const { execSync } = require('child_process');
         const WebSocket = require('ws');
         const { Octokit } = require('@octokit/rest');
-
         const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
         const connectToRealtimeAPI = () => {
@@ -55,7 +54,7 @@ jobs:
           });
 
           ws.on("open", () => {
-            console.log("WebSocket connection established.");
+            console.log("Connected to Realtime API.");
             sendSystemPrompt(ws);
           });
 
@@ -67,7 +66,7 @@ jobs:
                 console.log("Processed response:", response);
 
                 if (response.last) {
-                  console.log("Final response received. Closing WebSocket.");
+                  console.log("All issues processed. Closing connection.");
                   ws.close();
                 } else {
                   postInlineComment(response);
@@ -78,13 +77,8 @@ jobs:
             }
           });
 
-          ws.on("close", () => {
-            console.log("WebSocket connection closed.");
-          });
-
-          ws.on("error", (error) => {
-            console.error("WebSocket error:", error.message);
-          });
+          ws.on("close", () => console.error("WebSocket closed unexpectedly."));
+          ws.on("error", (error) => console.error("WebSocket error:", error.message));
 
           return ws;
         };
@@ -92,12 +86,12 @@ jobs:
         const sendSystemPrompt = (ws) => {
           const rulesPath = '.github/workflows/rules.json';
           const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
-
           const systemPrompt = {
             role: "system",
-            content: `You are an AI code reviewer. Use the following rules strictly to identify issues. Provide responses strictly in JSON format indicated by user. Do not respond until all prompts are sent, indicated by the final input marked with "last: true". All responses should include the correct line number and commit ID for each issue so the review solution will be displayed correctly next to the issue. Rules: ${JSON.stringify(rules)}.`,
+            content: `You are an AI code reviewer. Use the following rules strictly to identify issues. Respond strictly in JSON format indicated by user prompts. Do not respond until all prompts are sent, indicated by the final input marked with "last: true". Include the correct line number and commit hash for each issue. Rules: ${JSON.stringify(rules)}.`,
           };
 
+          console.log("Sending system prompt.");
           ws.send(
             JSON.stringify({
               type: "conversation.item.create",
@@ -111,6 +105,7 @@ jobs:
         };
 
         const processDiff = (ws) => {
+          console.log("Processing diff...");
           const diff = execSync(`git diff origin/${process.env.GITHUB_BASE_REF}`).toString();
           const changes = diff.split('diff --git')
             .slice(1)
@@ -123,27 +118,22 @@ jobs:
                 return null; // Skip invalid or workflow files
               }
 
-              const header = lines.find(line => line.startsWith('@@'));
-              const position = header ? parseInt(header.match(/\+([0-9]+)/)?.[1], 10) : null;
-
               const addedLines = [];
-              let lineCounter = position || 0;
-              for (const line of lines) {
+              lines.forEach((line, index) => {
                 if (line.startsWith('+') && !line.startsWith('+++')) {
                   let commitId = 'unknown';
                   try {
-                    commitId = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
+                    commitId = execSync(`git blame -L ${index + 1},${index + 1} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
                   } catch (error) {
-                    console.error(`Failed to get commit hash for ${filePath} at line ${lineCounter}:`, error.message);
+                    console.error(`Failed to get commit hash for ${filePath} at line ${index + 1}:`, error.message);
                   }
                   addedLines.push({
-                    lineNumber: lineCounter,
+                    lineNumber: index + 1,
                     lineDiff: line.slice(1),
                     commitId,
                   });
-                  lineCounter++;
                 }
-              }
+              });
               return { filePath, addedLines };
             })
             .filter(Boolean);
@@ -152,19 +142,7 @@ jobs:
             const isLast = index === changes.length - 1;
             const userPrompt = {
               role: "user",
-              content: `Review the following changes in the filePath ${change.filePath}: ${JSON.stringify(change.addedLines, null, 2)} Respond strictly in the following JSON format:
-              [
-                {
-                  "line": <line_number>,
-                  "filePath": "<file_path>",
-                  "issueDescription": "<short_description>",
-                  "whyIssue": "<why_this_is_an_issue>",
-                  "fix": "<code_snippet>",
-                  "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
-                }
-              ]
-              If there are no issues, respond with:
-              { "status": "pass" } ${isLast ? ', "last": true' : ''}`,
+              content: `Review the changes in ${change.filePath}:\n${JSON.stringify(change.addedLines, null, 2)}\nRespond in JSON format:\n[\n  {\n    "line": <line_number>,\n    "filePath": "<file_path>",\n    "issueDescription": "<short_description>",\n    "whyIssue": "<why_this_is_an_issue>",\n    "fix": "<code_snippet>",\n    "commitId": "<commit_id>"\n  }\n]\nIf no issues, respond with:\n{ "status": "pass" }${isLast ? ', "last": true' : ''}`,
             };
 
             ws.send(
@@ -178,16 +156,15 @@ jobs:
 
         const postInlineComment = async (issue) => {
           const { filePath, lineNumber, commitId, issueDescription, whyIssue, fix } = issue;
-          const pull_number = process.env.GITHUB_EVENT_PULL_REQUEST_NUMBER;
-          const body = `${issueDescription}\n\n${whyIssue}\n\nSuggested Fix:\n\n\`${fix}\``;
           const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+          const pull_number = process.env.PR_NUMBER;
 
           try {
             await octokit.pulls.createReviewComment({
               owner,
               repo,
               pull_number,
-              body,
+              body: `${issueDescription}\n\n${whyIssue}\n\nSuggested Fix:\n\n\`${fix}\``,
               path: filePath,
               position: lineNumber,
               commit_id: commitId,

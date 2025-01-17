@@ -96,7 +96,7 @@ jobs:
           return ws;
         };
 
-        const sendPrompt = (ws, globalHash, chunkHash, previousHash, filePath, chunk) => {
+        const sendPrompt = (ws, globalHash, chunkHash, previousHash, filePath, chunk, isLastPrompt) => {
           const event = {
             type: "response.create",
             response: {
@@ -154,8 +154,8 @@ jobs:
           const changes = diff.split('diff --git')
             .slice(1)
             .map(change => {
-              const lines = change.split('\n');
-              const filePathMatch = lines[0]?.match(/b\/([\S]+)/);
+              const lines = change.split('\\n');
+              const filePathMatch = lines[0]?.match(/b\\/([\\S]+)/);
               const filePath = filePathMatch ? filePathMatch[1] : null;
 
               if (!filePath) return null;
@@ -177,24 +177,26 @@ jobs:
           let previousChunkHash = null;
           const ws = connectToRealtimeAPI();
 
-        for (const { filePath, addedLines } of changes) {
-          let chunk = [];
-          for (let i = 0; i < addedLines.length; i++) {
-            chunk.push(addedLines[i]);
-            const isLastPrompt = i === addedLines.length - 1 && chunk.length > 0;
+          for (const { filePath, addedLines } of changes) {
+            let chunk = [];
+            for (let i = 0; i < addedLines.length; i++) {
+              chunk.push(addedLines[i]);
+              const isLastPrompt = i === addedLines.length - 1 && chunk.length > 0;
 
-            if (chunk.length >= 10 || isLastPrompt) {
-              const currentChunkHash = generateHash(JSON.stringify(chunk));
-              sendPrompt(ws, globalHash, currentChunkHash, previousChunkHash, filePath, chunk, isLastPrompt);
-              previousChunkHash = currentChunkHash;
-              chunk = [];
+              if (chunk.length >= 10 || isLastPrompt) {
+                const currentChunkHash = generateHash(JSON.stringify(chunk));
+                sendPrompt(ws, globalHash, currentChunkHash, previousChunkHash, filePath, chunk, isLastPrompt);
+                previousChunkHash = currentChunkHash;
+                chunk = [];
+              }
             }
           }
-        }
+        };
 
         processDiff();
         EOF
         node generate_feedback.js
+  
 
     - name: Post Inline Comments
       env:

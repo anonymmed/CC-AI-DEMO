@@ -273,14 +273,18 @@ jobs:
             const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const pull_number = process.env.PR_NUMBER;
-
+            // Initialize an array to hold the promises
+            const commentPromises = [];
+        
+            // Loop through feedbacks and create a promise for each comment
             for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
               const body = `${issueDescription} | ${whyIssue}  in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
-
-              console.log(`Posting comment for ${filePath} at line ${line}, commit ${commitId}`);
-
-              try {
-                await octokit.pulls.createReviewComment({
+        
+              console.log(`Preparing comment for ${filePath} at line ${line}, commit ${commitId}`);
+        
+              // Push the promise into the array
+              commentPromises.push(
+                octokit.pulls.createReviewComment({
                   owner,
                   repo,
                   pull_number,
@@ -288,16 +292,25 @@ jobs:
                   path: filePath,
                   position: line,
                   commit_id: commitId,
-                });
-                console.log(`Comment posted for ${filePath} at line ${line}`);
-              } catch (err) {
-                console.error(`Failed to post comment for ${filePath}:${line}`, err.message);
-              }
+                })
+                  .then(() => {
+                    console.log(`Comment posted for ${filePath} at line ${line}`);
+                  })
+                  .catch((err) => {
+                    console.error(`Failed to post comment for ${filePath}:${line}`, err.message);
+                  })
+              );
             }
+        
+            // Resolve all promises in parallel
+            await Promise.all(commentPromises);
+            console.log(`All ${commentPromises.length} review comments have been posted.`);
+
           } catch (error) {
             console.error('Error during posting comments:', error);
             process.exit(1);
           }
+        
         }
     
         postComments();

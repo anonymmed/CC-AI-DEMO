@@ -54,54 +54,86 @@ jobs:
         }
 
         const connectToRealtimeAPI = () => {
-          return new Promise((resolve, reject) => {
-            const url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17";
-            const ws = new WebSocket(url, {
-              headers: {
-                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-                "OpenAI-Beta": "realtime=v1",
-              },
-            });
+          const url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17";
+          const ws = new WebSocket(url, {
+            headers: {
+              "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+              "OpenAI-Beta": "realtime=v1",
+            },
+          });
 
-            ws.on("open", () => {
-              console.log("Connected to Realtime API.");
-              resolve(ws);
-            });
+          ws.on("open", () => {
+            console.log("Connected to Realtime API.");
+            createConversation(ws);
+          });
 
-            ws.on("error", (error) => {
-              console.error("WebSocket error:", error.message);
-              reject(error);
-            });
+          ws.on("message", (message) => {
+            const event = JSON.parse(message);
 
-            ws.on("close", () => {
-              console.log("Connection closed.");
-            });
+            if (event.type === "response.text.done") {
+              const response = JSON.parse(event.response.output[0].content[0].text);
 
-            ws.on("message", (message) => {
-              const event = JSON.parse(message);
-
-              if (event.type === "response.text.done") {
-                const response = JSON.parse(event.response.output[0].content[0].text);
-
-                if (response.last) {
-                  console.log("All issues processed. Closing connection.");
-                  ws.close();
-                } else {
-                  postInlineComment(response); // Post inline comment for each issue
-                }
+              if (response.last) {
+                console.log("All issues processed. Closing connection.");
+                ws.close();
+              } else {
+                postInlineComment(response); // Post inline comment for each issue
               }
-            });
+            }
+          });
+
+          ws.on("close", () => {
+            console.log("Connection closed.");
+          });
+
+          ws.on("error", (error) => {
+            console.error("WebSocket error:", error.message);
+          });
+
+          return ws;
+        };
+
+        let conversationId = null;
+
+        const createConversation = (ws) => {
+          const event = {
+            type: "conversation.create",
+          };
+          ws.send(JSON.stringify(event));
+          ws.on("message", (message) => {
+            const event = JSON.parse(message);
+            if (event.type === "conversation.created") {
+              conversationId = event.conversation.id;
+              console.log("Conversation created with ID:", conversationId);
+              processDiff(ws);
+            }
           });
         };
 
-        const sendPrompt = (ws, globalHash, chunkHash, previousHash, filePath, chunk, isLastPrompt) => {
+        const addItemToConversation = (ws, content, previousItemId = null) => {
+          const event = {
+            type: "conversation.item.create",
+            previous_item_id: previousItemId,
+            item: {
+              type: "message",
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: content,
+                },
+              ],
+            },
+          };
+          ws.send(JSON.stringify(event));
+        };
+
+        const requestResponse = (ws) => {
           const event = {
             type: "response.create",
             response: {
               modalities: ["text"],
               instructions: `
-                - Wait for all prompts to be sent before responding.
-                - Respond only after receiving a prompt with "isLastPrompt": true.
                 - Analyze the provided code changes.
                 - Identify one issue at a time.
                 - Respond in JSON format with: line number, file path, issue description, why it is an issue, and a suggested fix.
@@ -116,16 +148,9 @@ jobs:
                   }
                 - Include "last: true" in the final response to indicate all issues have been processed.
               `,
-              globalHash,
-              chunkHash,
-              previousHash,
-              input: chunk,
-              isLastPrompt,
             },
           };
-
           ws.send(JSON.stringify(event));
-          console.log("Sent prompt:", event);
         };
 
         const postInlineComment = async (issue) => {
@@ -147,7 +172,7 @@ jobs:
           }
         };
 
-        const processDiff = async () => {
+        const processDiff = (ws) => {
           const diff = execSync(`git diff origin/${process.env.GITHUB_BASE_REF}`).toString();
           const changes = diff.split('diff --git')
             .slice(1)
@@ -172,25 +197,20 @@ jobs:
             })
             .filter(Boolean);
 
-          let previousChunkHash = null;
-          const ws = await connectToRealtimeAPI();
+          let previousItemId = null;
 
           for (const { filePath, addedLines } of changes) {
-            let chunk = [];
-            for (let i = 0; i < addedLines.length; i++) {
-              chunk.push(addedLines[i]);
-              const isLastPrompt = i === addedLines.length - 1 && chunk.length > 0;
-
-              if (chunk.length >= 10 || isLastPrompt) {
-                const currentChunkHash = generateHash(JSON.stringify(chunk));
-                sendPrompt(ws, globalHash, currentChunkHash, previousChunkHash, filePath, chunk, isLastPrompt);
-                previousChunkHash = currentChunkHash;
-                chunk = [];
-              }
+            for (let i = 0; i < addedLines.length; i += 10) {
+              const chunk = addedLines.slice(i, i + 10);
+              const content = JSON.stringify(chunk, null, 2);
+              addItemToConversation(ws, content, previousItemId);
+              previousItemId = chunk[chunk.length - 1]?.lineNumber;
             }
           }
+
+          requestResponse(ws);
         };
 
-        processDiff();
+        connectToRealtimeAPI();
         EOF
         node generate_feedback.js

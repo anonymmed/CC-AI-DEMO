@@ -119,21 +119,31 @@ jobs:
               }
 
               const addedLines = [];
-              lines.forEach((line, index) => {
-                if (line.startsWith('+') && !line.startsWith('+++')) {
+              let lineOffset = 0;
+
+              for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.startsWith('@@')) {
+                  const hunkHeader = line.match(/\+(\d+)(?:,(\d+))?/);
+                  lineOffset = hunkHeader ? parseInt(hunkHeader[1], 10) : 0;
+                } else if (line.startsWith('+') && !line.startsWith('+++')) {
                   let commitId = 'unknown';
                   try {
-                    commitId = execSync(`git blame -L ${index + 1},${index + 1} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
+                    commitId = execSync(
+                      `git blame -L ${lineOffset},${lineOffset} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`
+                    ).toString().trim();
                   } catch (error) {
-                    console.error(`Failed to get commit hash for ${filePath} at line ${index + 1}:`, error.message);
+                    console.error(`Failed to get commit hash for ${filePath} at line ${lineOffset}:`, error.message);
                   }
                   addedLines.push({
-                    lineNumber: index + 1,
+                    lineNumber: lineOffset,
                     lineDiff: line.slice(1),
                     commitId,
                   });
+                  lineOffset++;
                 }
-              });
+              }
+
               return { filePath, addedLines };
             })
             .filter(Boolean);

@@ -49,7 +49,7 @@ jobs:
         const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
         const connectToRealtimeAPI = () => {
-          const ws = new WebSocket("wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17", {
+          const ws = new WebSocket("wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview", {
             headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
           });
 
@@ -86,7 +86,7 @@ jobs:
         const sendSystemPrompt = (ws) => {
           const rulesPath = '.github/workflows/rules.json';
           const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
-
+          console.log('found rules: ', rules);
           const systemPrompt = {
             role: "system",
             content: `You are an AI code reviewer. Use the following rules strictly to identify issues. Provide responses strictly in JSON format indicated by user. Do not respond until all prompts are sent, indicated by the final input marked with "last: true". All responses should include the correct line number for each issue so the review solution will be displayed correctly next to the issue. Rules: ${JSON.stringify(rules)}.`,

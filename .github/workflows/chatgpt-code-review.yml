@@ -106,6 +106,7 @@ jobs:
         };
 
         const processDiff = () => {
+        console.log("Processing diff...");
           const diff = execSync(`git diff origin/${process.env.GITHUB_BASE_REF}`).toString();
           const changes = diff.split('diff --git')
             .slice(1)

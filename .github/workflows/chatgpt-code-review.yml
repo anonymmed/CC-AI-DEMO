@@ -83,7 +83,7 @@ jobs:
                 .slice(1)
                 .map(change => {
                   const lines = change.split('\\n');
-                  const filePathMatch = lines[0]?.match(/b\\/(\\S+)/);
+                  const filePathMatch = lines[0]?.match(/b\/(\S+)/);
                   const filePath = filePathMatch ? filePathMatch[1] : null;
 
                   if (!filePath || filePath.includes('workflows/') || filePath.includes('rules')) {

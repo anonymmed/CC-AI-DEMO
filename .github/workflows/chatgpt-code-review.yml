@@ -87,8 +87,8 @@ jobs:
           const rulesPath = '.github/workflows/rules.json';
           const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
           const systemPrompt = {
-            role: "system",
-            content: `You are an AI code reviewer. Use the following rules strictly to identify issues. Respond strictly in JSON format indicated by user prompts. Do not respond until all prompts are sent, indicated by the final input marked with "last: true". Include the correct line number and commit hash for each issue. Rules: ${JSON.stringify(rules)}.`,
+            type: "input_text",
+            text: `You are an AI code reviewer. Use the following rules strictly to identify issues. Respond strictly in JSON format indicated by user prompts. Do not respond until all prompts are sent, indicated by the final input marked with "last: true". Include the correct line number and commit hash for each issue. Rules: ${JSON.stringify(rules)}.`,
           };
 
           console.log("Sending system prompt.");
@@ -151,8 +151,8 @@ jobs:
           changes.forEach((change, index) => {
             const isLast = index === changes.length - 1;
             const userPrompt = {
-              role: "user",
-              content: `Review the changes in ${change.filePath}:\n${JSON.stringify(change.addedLines, null, 2)}\nRespond in JSON format:\n[\n  {\n    "line": <line_number>,\n    "filePath": "<file_path>",\n    "issueDescription": "<short_description>",\n    "whyIssue": "<why_this_is_an_issue>",\n    "fix": "<code_snippet>",\n    "commitId": "<commit_id>"\n  }\n]\nIf no issues, respond with:\n{ "status": "pass" }${isLast ? ', "last": true' : ''}`,
+              type: "input_text",
+              text: `Review the changes in ${change.filePath}:\n${JSON.stringify(change.addedLines, null, 2)}\nRespond in JSON format:\n[\n  {\n    "line": <line_number>,\n    "filePath": "<file_path>",\n    "issueDescription": "<short_description>",\n    "whyIssue": "<why_this_is_an_issue>",\n    "fix": "<code_snippet>",\n    "commitId": "<commit_id>"\n  }\n]\nIf no issues, respond with:\n{ "status": "pass" }${isLast ? ', "last": true' : ''}`,
             };
 
             ws.send(

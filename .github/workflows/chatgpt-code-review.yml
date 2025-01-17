@@ -157,7 +157,6 @@ jobs:
             } else {
              console.log("sending prompt:", userPrompt); 
             }
-
             ws.send(
               JSON.stringify({
                 type: "conversation.item.create",

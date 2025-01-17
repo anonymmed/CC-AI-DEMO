@@ -64,16 +64,19 @@ jobs:
 
           ws.on("open", () => {
             console.log("Connected to Realtime API.");
-            createConversation(ws);
           });
 
           ws.on("message", (message) => {
             const event = JSON.parse(message.toString());
             console.log("Received message from server:", event);
 
+            if (event.type === "session.created") {
+              console.log("Session created. Ready to process diffs.");
+              processDiff(ws);
+            }
+
             if (event.type === "response.text.done") {
               const response = JSON.parse(event.response.output[0].content[0].text);
-              
               console.log("Processed response:", response);
 
               if (response.last) {
@@ -83,10 +86,14 @@ jobs:
                 postInlineComment(response); // Post inline comment for each issue
               }
             }
+
+            if (event.type === "error") {
+              console.error("Error from server:", event.error);
+            }
           });
 
           ws.on("close", () => {
-            console.log("WebSocket connection closed.");
+            console.log("Connection closed.");
           });
 
           ws.on("error", (error) => {
@@ -96,28 +103,9 @@ jobs:
           return ws;
         };
 
-        let conversationId = null;
-
-        const createConversation = (ws) => {
-          const event = {
-            type: "conversation.create",
-          };
-          ws.send(JSON.stringify(event));
-          console.log("Sent conversation.create event.");
-          ws.on("message", (message) => {
-            const event = JSON.parse(message);
-            if (event.type === "conversation.created") {
-              conversationId = event.conversation.id;
-              console.log("Conversation created with ID:", conversationId);
-              processDiff(ws);
-            }
-          });
-        };
-
-        const addItemToConversation = (ws, content, previousItemId = null) => {
+        const addItemToConversation = (ws, content) => {
           const event = {
             type: "conversation.item.create",
-            previous_item_id: previousItemId,
             item: {
               type: "message",
               role: "user",
@@ -130,7 +118,7 @@ jobs:
             },
           };
           ws.send(JSON.stringify(event));
-          console.log("Added item to conversation:", event);
+          console.log("Sent conversation.item.create:", event);
         };
 
         const requestResponse = (ws) => {
@@ -142,6 +130,7 @@ jobs:
                 - Analyze the provided code changes.
                 - Identify one issue at a time.
                 - Respond in JSON format with: line number, file path, issue description, why it is an issue, and a suggested fix.
+                - Respond one issue object at a time, don't send them all together.
                 - Example response:
                   {
                     "line": 42,
@@ -156,7 +145,7 @@ jobs:
             },
           };
           ws.send(JSON.stringify(event));
-          console.log("Sent response.create event:", event);
+          console.log("Sent response.create event.");
         };
 
         const postInlineComment = async (issue) => {
@@ -180,7 +169,6 @@ jobs:
 
         const processDiff = (ws) => {
           const diff = execSync(`git diff origin/${process.env.GITHUB_BASE_REF}`).toString();
-          console.log("Processing diff...");
           const changes = diff.split('diff --git')
             .slice(1)
             .map(change => {
@@ -204,18 +192,14 @@ jobs:
             })
             .filter(Boolean);
 
-          let previousItemId = null;
-
           for (const { filePath, addedLines } of changes) {
             for (let i = 0; i < addedLines.length; i += 10) {
               const chunk = addedLines.slice(i, i + 10);
               const content = JSON.stringify(chunk, null, 2);
-              addItemToConversation(ws, content, previousItemId);
-              previousItemId = chunk[chunk.length - 1]?.lineNumber;
+              addItemToConversation(ws, content);
             }
           }
 
-          console.log("Requesting response...");
           requestResponse(ws);
         };
 

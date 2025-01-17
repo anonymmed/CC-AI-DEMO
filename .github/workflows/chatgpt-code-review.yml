@@ -82,8 +82,8 @@ jobs:
               const changes = diff.split('diff --git')
                 .slice(1)
                 .map(change => {
-                  const lines = change.split('\n');
-                  const filePathMatch = lines[0]?.match(/b\/(\S+)/);
+                  const lines = change.split('\\n');
+                  const filePathMatch = lines[0]?.match(/b\\/(\\S+)/);
                   const filePath = filePathMatch ? filePathMatch[1] : null;
 
                   if (!filePath || filePath.includes('workflows/') || filePath.includes('rules')) {
@@ -91,7 +91,7 @@ jobs:
                   }
 
                   const header = lines.find(line => line.startsWith('@@'));
-                  const position = header ? parseInt(header.match(/\+([0-9]+)/)?.[1], 10) : null;
+                  const position = header ? parseInt(header.match(/\\+([0-9]+)/)?.[1], 10) : null;
                   const addedLines = [];
                   let lineCounter = position || 0;
 
@@ -137,154 +137,152 @@ jobs:
                     // Process the current chunk
                     const messages = [
                       {
-                        "role": "system",
-                        "content": `You are an AI reviewing code. Follow these guidelines:
-                        - Respond strictly in JSON format as described.
-                        - Use the provided rules to identify issues strictly and without exceptions.
-                        - Include the correct line number for each issue to ensure proper display in the review.
+                        role: "system",
+                        content: `You are an AI reviewing code. Follow these guidelines:
+                                - Respond strictly in JSON format as described.
+                                - Use the provided rules to identify issues strictly and without exceptions.
+                                - Include the correct line number for each issue to ensure proper display in the review.
 
-                    ### Example JSON Format
-                    [
-                      {
-                        "line": 42,
-                        "filePath": "file1.cs",
-                        "issueDescription": "Avoid hardcoding values.",
-                        "whyIssue": "Hardcoded values are difficult to maintain and can lead to errors.",
-                        "fix": "Use a constant or configuration value instead."
-                      }
-                    ]
-
-                    ### Rules
-                    ${JSON.stringify(rules, null, 2)}
-                                          `
-                                        },
-                                        {
-                                          "role": "user",
-                                          "content": `
-                                          Review the following changes in the filePath \`${filePath}\`:
-                                          ${JSON.stringify(chunk, null, 2)}
-
-                                          Respond strictly in the JSON format shown above. If there are no issues, respond with:
-                                          { "status": "pass" }
-                                          `
-                                        }
-                                      ];
-
-                                      try {
-                                        const response = await openai.chat.completions.create({
-                                          model: 'gpt-4',
-                                          messages,
-                                          max_tokens: RESERVED_TOKENS,
-                                          n: 1,
-                                        });
-
-                                        const feedbackContent = response.choices[0].message.content;
-                                        console.log(`Raw GPT Response:`, feedbackContent);
-
-                                        if (feedbackContent.trim() === '{ "status": "pass" }') {
-                                          console.log(`No issues found for ${filePath}`);
-                                          continue;
-                                        }
-
-                                        try {
-                                          const parsedFeedback = JSON.parse(feedbackContent);
-                                          parsedFeedback.forEach(item => {
-                                            feedbacks.push(item);
-                                          });
-                                        } catch (jsonError) {
-                                          console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
-                                        }
-                                      } catch (error) {
-                                        console.error(`Error processing feedback for ${filePath}:`, error.message);
-                                      }
-
-                                      // Reset for the next chunk
-                                      chunk = [];
-                                      currentTokenCount = 0;
-                                    }
-
-                                    chunk.push(line);
-                                    currentTokenCount += lineTokenEstimate;
+                                ### Example JSON Format
+                                [
+                                  {
+                                    "line": 42,
+                                    "filePath": "file1.cs",
+                                    "issueDescription": "Avoid hardcoding values.",
+                                    "whyIssue": "Hardcoded values are difficult to maintain and can lead to errors.",
+                                    "fix": "Use a constant or configuration value instead."
                                   }
+                                ]
 
-                                  // Process any remaining lines in the last chunk
-                                  if (chunk.length > 0) {
-                                    const messages = [
-                                      {
-                                        "role": "system",
-                                        "content": `You are an AI reviewing code. Follow these guidelines:
-                    - Respond strictly in JSON format as described.
-                    - Use the provided rules to identify issues strictly and without exceptions.
-                    - Include the correct line number for each issue to ensure proper display in the review.
+                        ### Rules
+                        ${JSON.stringify(rules, null, 2)}`
+                                            },
+                                            {
+                                              role: "user",
+                                              content: `
+                        Review the following changes in the filePath \`${filePath}\`:
+                        ${JSON.stringify(chunk, null, 2)}
 
-                    ### Example JSON Format
-                    [
-                      {
-                        "line": 42,
-                        "filePath": "file1.cs",
-                        "issueDescription": "Avoid hardcoding values.",
-                        "whyIssue": "Hardcoded values are difficult to maintain and can lead to errors.",
-                        "fix": "Use a constant or configuration value instead."
+                        Respond strictly in the JSON format shown above. If there are no issues, respond with:
+                        { "status": "pass" }
+                                              `
+                                            }
+                                          ];
+
+                    try {
+                      const response = await openai.chat.completions.create({
+                        model: 'gpt-4',
+                        messages,
+                        max_tokens: RESERVED_TOKENS,
+                        n: 1,
+                      });
+
+                      const feedbackContent = response.choices[0].message.content;
+                      console.log(`Raw GPT Response:`, feedbackContent);
+
+                      if (feedbackContent.trim() === '{ "status": "pass" }') {
+                        console.log(`No issues found for ${filePath}`);
+                        continue;
                       }
-                    ]
 
-                    ### Rules
-                    ${JSON.stringify(rules, null, 2)}
-                                          `
-                                      },
-                                      {
-                                        "role": "user",
-                                        "content": `
-                                        Review the following changes in the filePath \`${filePath}\`:
-                                        ${JSON.stringify(chunk, null, 2)}
+                      try {
+                        const parsedFeedback = JSON.parse(feedbackContent);
+                        parsedFeedback.forEach(item => {
+                          feedbacks.push(item);
+                        });
+                      } catch (jsonError) {
+                        console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
+                      }
+                    } catch (error) {
+                      console.error(`Error processing feedback for ${filePath}:`, error.message);
+                    }
 
-                                        Respond strictly in the JSON format shown above. If there are no issues, respond with:
-                                        { "status": "pass" }
-                                        `
-                                      }
-                                    ];
+                    // Reset for the next chunk
+                    chunk = [];
+                    currentTokenCount = 0;
+                  }
 
-                                    try {
-                                      const response = await openai.chat.completions.create({
-                                        model: 'gpt-4',
-                                        messages,
-                                        max_tokens: RESERVED_TOKENS,
-                                        n: 1,
-                                      });
+                  chunk.push(line);
+                  currentTokenCount += lineTokenEstimate;
+                }
 
-                                      const feedbackContent = response.choices[0].message.content;
-                                      console.log(`Raw GPT Response:`, feedbackContent);
+                // Process any remaining lines in the last chunk
+                if (chunk.length > 0) {
+                  const messages = [
+                    {
+                      role: "system",
+                      content: `You are an AI reviewing code. Follow these guidelines:
+                                - Respond strictly in JSON format as described.
+                                - Use the provided rules to identify issues strictly and without exceptions.
+                                - Include the correct line number for each issue to ensure proper display in the review.
 
-                                      if (feedbackContent.trim() === '{ "status": "pass" }') {
-                                        console.log(`No issues found for ${filePath}`);
-                                        continue;
-                                      }
-
-                                      try {
-                                        const parsedFeedback = JSON.parse(feedbackContent);
-                                        parsedFeedback.forEach(item => {
-                                          feedbacks.push(item);
-                                        });
-                                      } catch (jsonError) {
-                                        console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
-                                      }
-                                    } catch (error) {
-                                      console.error(`Error processing feedback for ${filePath}:`, error.message);
-                                    }
+                                ### Example JSON Format
+                                [
+                                  {
+                                    "line": 42,
+                                    "filePath": "file1.cs",
+                                    "issueDescription": "Avoid hardcoding values.",
+                                    "whyIssue": "Hardcoded values are difficult to maintain and can lead to errors.",
+                                    "fix": "Use a constant or configuration value instead."
                                   }
-                                }
+                                ]
 
-                                // Update the reviewed commits cache
-                                const newReviewedCommits = changes.flatMap(change => change.addedLines.map(line => line.commitId));
-                                const updatedReviewedCommits = Array.from(new Set([...reviewedCommits, ...newReviewedCommits]));
-                                fs.writeFileSync('reviewed_commits.json', JSON.stringify(updatedReviewedCommits));
+                              ### Rules
+                              ${JSON.stringify(rules, null, 2)}`
+                                                },
+                                                {
+                                                  role: "user",
+                                                  content: `
+                              Review the following changes in the filePath \`${filePath}\`:
+                              ${JSON.stringify(chunk, null, 2)}
 
-                                fs.writeFileSync('feedbacks.json', JSON.stringify(feedbacks, null, 2));
-                              } catch (error) {
-                                console.error('Error generating feedback:', error);
-                                process.exit(1);
-                              }
-                            }
+                              Respond strictly in the JSON format shown above. If there are no issues, respond with:
+                              { "status": "pass" }
+                                                    `
+                                                }
+                                              ];
+
+                  try {
+                    const response = await openai.chat.completions.create({
+                      model: 'gpt-4',
+                      messages,
+                      max_tokens: RESERVED_TOKENS,
+                      n: 1,
+                    });
+
+                    const feedbackContent = response.choices[0].message.content;
+                    console.log(`Raw GPT Response:`, feedbackContent);
+
+                    if (feedbackContent.trim() === '{ "status": "pass" }') {
+                      console.log(`No issues found for ${filePath}`);
+                      continue;
+                    }
+
+                    try {
+                      const parsedFeedback = JSON.parse(feedbackContent);
+                      parsedFeedback.forEach(item => {
+                        feedbacks.push(item);
+                      });
+                    } catch (jsonError) {
+                      console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
+                    }
+                  } catch (error) {
+                    console.error(`Error processing feedback for ${filePath}:`, error.message);
+                  }
+                }
+              }
+
+              // Update the reviewed commits cache
+              const newReviewedCommits = changes.flatMap(change => change.addedLines.map(line => line.commitId));
+              const updatedReviewedCommits = Array.from(new Set([...reviewedCommits, ...newReviewedCommits]));
+              fs.writeFileSync('reviewed_commits.json', JSON.stringify(updatedReviewedCommits));
+
+              fs.writeFileSync('feedbacks.json', JSON.stringify(feedbacks, null, 2));
+            } catch (error) {
+              console.error('Error generating feedback:', error);
+              process.exit(1);
+            }
+          }
 
           generateFeedback();
           EOF
@@ -293,6 +291,7 @@ jobs:
       - name: Save Updated Reviewed Commits
         id: save_commits
         run: |
+          mkdir -p ./cache  # Ensure the cache directory exists
           mv reviewed_commits.json ./cache/reviewed_commits.json
       - name: Save Cache for Reviewed Commits
         uses: actions/cache@v3

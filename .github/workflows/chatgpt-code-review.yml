@@ -131,7 +131,7 @@ jobs:
 
             const userPrompt = {
               role: "user",
-              content: `Review the following changes in the filePath \\`${change.filePath}\\`:\n${JSON.stringify(change.addedLines, null, 2)}\nRespond strictly in the following JSON format:\n[\n  {\n    "line": <line_number>,\n    "filePath": "<file_path>",\n    "issueDescription": "<short_description>",\n    "whyIssue": "<why_this_is_an_issue>",\n    "fix": "<code_snippet>",\n    "commitId": "<commit_id_specific_to_the_line_that_have_issue>"\n  }\n]\nIf there are no issues, respond with:\n{ "status": "pass" }`
+              content: `Review the following changes in the filePath ${change.filePath}:\n ${JSON.stringify(change.addedLines, null, 2)} \n Respond strictly in the following JSON format:\n [ \n  { \n    "line": <line_number>,\n    "filePath": "<file_path>",\n    "issueDescription": "<short_description>",\n    "whyIssue": "<why_this_is_an_issue>",\n    "fix": "<code_snippet>",\n    "commitId": "<commit_id_specific_to_the_line_that_have_issue>"\n  }\n]\nIf there are no issues, respond with:\n{ "status": "pass" }`
             };
 
             ws.send(

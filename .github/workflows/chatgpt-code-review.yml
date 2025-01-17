@@ -230,7 +230,7 @@ jobs:
                   try {
                     const parsedFeedback = JSON.parse(feedbackContent);
                     parsedFeedback.forEach(item => {
-                      feedbacks.push({ ...item, commitId: null });
+                      feedbacks.push(item);
                     });
                   } catch (jsonError) {
                     console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);

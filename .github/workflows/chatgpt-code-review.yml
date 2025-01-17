@@ -31,204 +31,161 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-node-
     - name: Install Dependencies
-      run: npm install openai @octokit/rest@18.12.0
+      run: npm install openai @octokit/rest@18.12.0 ws esprima
 
-    - name: Fetch PR Diff
-      id: get_diff
-      run: |
-        git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
     - name: Generate ChatGPT Feedback
       id: generate_feedback
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
       run: |
         cat <<'EOF' > generate_feedback.js
-        const fs = require('fs');
         const { execSync } = require('child_process');
-        const { OpenAI } = require('openai');
-        const openai = new OpenAI({
-          apiKey: process.env.OPENAI_API_KEY,
-        });
-        const rulesPath = '.github/workflows/rules.json';
-        const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
-        const MAX_TOKENS = 4000;
-        const AVERAGE_LINE_CHARACTERS = 80; // Approximate average line length
-        const CHARACTERS_PER_TOKEN = 4; // Approximate characters per token
-        const RESERVED_TOKENS = 1000; // Reserve for the response
-        async function generateFeedback() {
-          try {
-            const diff = fs.readFileSync('pr_diff.txt', 'utf8');
-            const changes = diff.split('diff --git')
-              .slice(1)
-              .map(change => {
-                const lines = change.split('\n');
-                const filePathMatch = lines[0]?.match(/b\/([\S]+)/);
-                const filePath = filePathMatch ? filePathMatch[1] : null;
-                if (!filePath || filePath.includes('workflows/') || filePath.includes('rules')) {
-                  return null; // Skip invalid or workflow files
+        const crypto = require('crypto');
+        const WebSocket = require('ws');
+        const { Octokit } = require('@octokit/rest');
+        const globalHash = crypto.randomBytes(16).toString('hex');
+        function generateHash(input) {
+          return crypto.createHash('sha256').update(input).digest('hex');
+        }
+        const connectToRealtimeAPI = () => {
+          const url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17";
+          const ws = new WebSocket(url, {
+            headers: {
+              "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+              "OpenAI-Beta": "realtime=v1",
+            },
+          });
+          ws.on("open", () => {
+            console.log("Connected to Realtime API.");
+            processDiff(ws);
+          });
+          ws.on("message", (message) => {
+            const event = JSON.parse(message.toString());
+            console.log("Received message from server:", event);
+            if (event.type === "response.text.done") {
+              try {
+                const response = JSON.parse(event.response?.output?.[0]?.content?.[0]?.text || '{}');
+                console.log("Processed response:", response);
+                if (response.last) {
+                  console.log("All issues processed. Closing connection.");
+                  ws.close();
+                } else {
+                  postInlineComment(response); // Post inline comment for each issue
                 }
-                const header = lines.find(line => line.startsWith('@@'));
-                const position = header ? parseInt(header.match(/\+([0-9]+)/)?.[1], 10) : null;
-                const addedLines = [];
-                let lineCounter = position || 0;
-                for (const line of lines) {
-                  if (line.startsWith('+') && !line.startsWith('+++')) {
-                    let commitHash;
-                    try {
-                      commitHash = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
-                    } catch (error) {
-                      console.error(`Failed to get commit hash for ${filePath} at line ${lineCounter}:`, error.message);
-                      commitHash = 'unknown';
-                    }
-                    addedLines.push({
-                      lineNumber: lineCounter,
-                      lineDiff: line.slice(1),
-                      commitId: commitHash
-                    });
-                    lineCounter++;
-                  }
-                }
-                if (addedLines.length === 0) {
-                  return null; // Skip invalid changes
-                }
-                return { filePath, addedLines };
-              })
-              .filter(Boolean); // Remove null values
-            const feedbacks = [];
-            for (const { filePath, addedLines } of changes) {
-              let chunk = [];
-              let currentTokenCount = 0;
-              for (const line of addedLines) {
-                const lineTokenEstimate = Math.ceil((line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN);
-                if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {
-                  // Process the current chunk
-                  const messages = [
-                    {
-                      "role": "system",
-                      "content": `You are an AI reviewing code. Follow these guidelines:\n\n- Always respond in valid JSON format as described.\n- Use the provided rules to identify issues strictly and without exceptions.\n- Include the correct line number for each issue to ensure proper display in the review.\n\n### Example JSON Format\n[\n  {\n    \"line\": 42,\n    \"filePath\": \"file1.cs\",\n    \"issueDescription\": \"Avoid hardcoding values.\",\n    \"whyIssue\": \"Hardcoded values are difficult to maintain and can lead to errors.\",\n    \"fix\": \"Use a constant or configuration value instead.\"\n  }\n]\n\n### Rules\n${JSON.stringify(rules, null, 2)}`
-                    },
-                    {
-                      "role": "user",
-                      "content": `\nReview the following changes in the filePath \`${filePath}\`:\n${JSON.stringify(chunk, null, 2)}\n\nRespond strictly in the JSON format shown above. If there are no issues, respond with:\n{ \"status\": \"pass\" }\n                      `
-                    }
-                  ];
-                  try {
-                    const response = await openai.chat.completions.create({
-                      model: 'gpt-4',
-                      messages,
-                      max_tokens: RESERVED_TOKENS,
-                      n: 1,
-                    });
-                    const feedbackContent = response.choices[0].message.content;
-                    console.log(`Raw GPT Response:`, feedbackContent);
-                    if (feedbackContent.trim() === '{ "status": "pass" }') {
-                      console.log(`No issues found for ${filePath}`);
-                      continue;
-                    }
-                    try {
-                      const parsedFeedback = JSON.parse(feedbackContent);
-                      parsedFeedback.forEach(item => {
-                        feedbacks.push(item); // Include commitId from chunk
-                      });
-                    } catch (jsonError) {
-                      console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
-                    }
-                  } catch (error) {
-                    console.error(`Error processing feedback for ${filePath}:`, error.message);
-                  }
-                  // Reset for the next chunk
-                  chunk = [];
-                  currentTokenCount = 0;
-                }
-                chunk.push(line);
-                currentTokenCount += lineTokenEstimate;
-              }
-              // Process any remaining lines in the last chunk
-              if (chunk.length > 0) {
-                const messages = [
-                  {
-                    "role": "system",
-                    "content": `You are an AI reviewing code. Follow these guidelines:\n\n- Always respond in valid JSON format as described.\n- Use the provided rules to identify issues strictly and without exceptions.\n- Include the correct line number for each issue to ensure proper display in the review.\n\n### Example JSON Format\n[\n  {\n    \"line\": 42,\n    \"filePath\": \"file1.cs\",\n    \"issueDescription\": \"Avoid hardcoding values.\",\n    \"whyIssue\": \"Hardcoded values are difficult to maintain and can lead to errors.\",\n    \"fix\": \"Use a constant or configuration value instead.\"\n  }\n]\n\n### Rules\n${JSON.stringify(rules, null, 2)}`
-                  },
-                  {
-                    "role": "user",
-                    "content": `\nReview the following changes in the filePath \`${filePath}\`:\n${JSON.stringify(chunk, null, 2)}\n\nRespond strictly in the JSON format shown above. If there are no issues, respond with:\n{ \"status\": \"pass\" }\n                      `
-                  }
-                ];
-                try {
-                  const response = await openai.chat.completions.create({
-                    model: 'gpt-4',
-                    messages,
-                    max_tokens: RESERVED_TOKENS,
-                    n: 1,
-                  });
-                  const feedbackContent = response.choices[0].message.content;
-                  console.log(`Raw GPT Response:`, feedbackContent);
-                  if (feedbackContent.trim() === '{ "status": "pass" }') {
-                    console.log(`No issues found for ${filePath}`);
-                    continue;
-                  }
-                  try {
-                    const parsedFeedback = JSON.parse(feedbackContent);
-                    parsedFeedback.forEach(item => {
-                      feedbacks.push(item); // Include commitId from chunk
-                    });
-                  } catch (jsonError) {
-                    console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
-                  }
-                } catch (error) {
-                  console.error(`Error processing feedback for ${filePath}:`, error.message);
-                }
+              } catch (err) {
+                console.error("Error parsing response:", err.message);
               }
             }
-            fs.writeFileSync('feedbacks.json', JSON.stringify(feedbacks, null, 2));
+            if (event.type === "error") {
+              console.error("Error from server:", event.error);
+            }
+          });
+          ws.on("close", () => {
+            console.log("Connection closed.");
+          });
+          ws.on("error", (error) => {
+            console.error("WebSocket error:", error.message);
+          });
+          return ws;
+        };
+        const addItemToConversation = (ws, content, callback) => {
+          const event = {
+            type: "conversation.item.create",
+            item: {
+              type: "message",
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: content,
+                },
+              ],
+            },
+          };
+          ws.send(JSON.stringify(event), callback);
+          console.log("Sent conversation.item.create:", event);
+        };
+        const requestResponse = (ws) => {
+          const event = {
+            type: "response.create",
+            response: {
+              modalities: ["text"],
+              instructions: `
+                - Analyze the provided code changes.
+                - Identify one issue at a time.
+                - Respond in JSON format with: line number, file path, issue description, why it is an issue, and a suggested fix.
+                - Example response:
+                  {
+                    "line": 42,
+                    "filePath": "main.cs",
+                    "issueDescription": "Avoid hardcoding values.",
+                    "whyIssue": "Hardcoded values are difficult to maintain.",
+                    "fix": "Use constants instead.",
+                    "last": false
+                  }
+                - Include "last: true" in the final response to indicate all issues have been processed.
+              `,
+            },
+          };
+          ws.send(JSON.stringify(event));
+          console.log("Sent response.create event.");
+        };
+        const postInlineComment = async (issue) => {
+          const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+          const { filePath, line, issueDescription, whyIssue, fix } = issue;
+          try {
+            await octokit.pulls.createReviewComment({
+              owner: process.env.GITHUB_REPOSITORY.split('/')[0],
+              repo: process.env.GITHUB_REPOSITORY.split('/')[1],
+              pull_number: process.env.PR_NUMBER,
+              body: `${issueDescription}\n\n${whyIssue}\n\nSuggested Fix:\n\n\`${fix}\``,
+              path: filePath,
+              position: line,
+            });
+            console.log(`Comment posted for ${filePath} at line ${line}`);
           } catch (error) {
-            console.error('Error generating feedback:', error);
-            process.exit(1);
+            console.error(`Failed to post comment: ${error.message}`);
           }
-        }
-        generateFeedback();
+        };
+        const processDiff = (ws) => {
+          const diff = execSync(`git diff origin/${process.env.GITHUB_BASE_REF}`).toString();
+          const changes = diff.split('diff --git')
+            .slice(1)
+            .map(change => {
+              const lines = change.split('\n');
+              const filePathMatch = lines[0]?.match(/b\/([\S]+)/);
+              const filePath = filePathMatch ? filePathMatch[1] : null;
+              if (!filePath) return null;
+              const addedLines = [];
+              lines.forEach((line, index) => {
+                if (line.startsWith('+') && !line.startsWith('+++')) {
+                  addedLines.push({
+                    lineNumber: index + 1,
+                    lineDiff: line.slice(1),
+                  });
+                }
+              });
+              return { filePath, addedLines };
+            })
+            .filter(Boolean);
+          let delay = 0;
+          for (const { filePath, addedLines } of changes) {
+            for (let i = 0; i < addedLines.length; i += 50) { // Consolidate chunks into ~50 lines each
+              const chunk = addedLines.slice(i, i + 50);
+              const content = JSON.stringify(chunk, null, 2);
+              setTimeout(() => {
+                addItemToConversation(ws, content, () => {
+                  console.log("Prompt sent for chunk:", chunk);
+                  if (i + 50 >= addedLines.length) {
+                    requestResponse(ws);
+                  }
+                });
+              }, delay);
+              delay += 1500; // Add delay to avoid rate limits
+            }
+          }
+        };
+        connectToRealtimeAPI();
         EOF
         node generate_feedback.js
-    - name: Post Inline Comments
-      env:
-        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
-        PR_NUMBER: ${{ github.event.number }}
-      run: |
-        cat <<'EOF' > post_comments.js
-        const fs = require('fs');
-        const { Octokit } = require('@octokit/rest');
-        const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-        async function postComments() {
-          try {
-            const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
-            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
-            const pull_number = process.env.PR_NUMBER;
-            for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
-              const body = `${issueDescription} | ${whyIssue}  in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
-              console.log(`Posting comment for ${filePath} at line ${line}, commit ${commitId}`);
-              try {
-                await octokit.pulls.createReviewComment({
-                  owner,
-                  repo,
-                  pull_number,
-                  body,
-                  path: filePath,
-                  position: line,
-                  commit_id: commitId,
-                });
-                console.log(`Comment posted for ${filePath} at line ${line}`);
-              } catch (err) {
-                console.error(`Failed to post comment for ${filePath}:${line}`, err.message);
-              }
-            }
-          } catch (error) {
-            console.error('Error during posting comments:', error.message);
-            process.exit(1);
-          }
-        }
-    
-        postComments();
-        EOF
-    
-        node post_comments.js

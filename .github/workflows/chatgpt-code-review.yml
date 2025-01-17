@@ -70,6 +70,7 @@ jobs:
                   ws.close();
                 } else {
                   postInlineComment(response);
+                  return false;
                 }
               } catch (err) {
                 console.error("Error parsing response:", err.message);

@@ -64,26 +64,26 @@ jobs:
 
           ws.on("open", () => {
             console.log("Connected to Realtime API.");
+            processDiff(ws);
           });
 
           ws.on("message", (message) => {
             const event = JSON.parse(message.toString());
             console.log("Received message from server:", event);
 
-            if (event.type === "session.created") {
-              console.log("Session created. Ready to process diffs.");
-              processDiff(ws);
-            }
-
             if (event.type === "response.text.done") {
-              const response = JSON.parse(event.response.output[0].content[0].text);
-              console.log("Processed response:", response);
+              try {
+                const response = JSON.parse(event.response?.output?.[0]?.content?.[0]?.text || '{}');
+                console.log("Processed response:", response);
 
-              if (response.last) {
-                console.log("All issues processed. Closing connection.");
-                ws.close();
-              } else {
-                postInlineComment(response); // Post inline comment for each issue
+                if (response.last) {
+                  console.log("All issues processed. Closing connection.");
+                  ws.close();
+                } else {
+                  postInlineComment(response); // Post inline comment for each issue
+                }
+              } catch (err) {
+                console.error("Error parsing response:", err.message);
               }
             }
 
@@ -103,7 +103,7 @@ jobs:
           return ws;
         };
 
-        const addItemToConversation = (ws, content) => {
+        const addItemToConversation = (ws, content, callback) => {
           const event = {
             type: "conversation.item.create",
             item: {
@@ -117,7 +117,7 @@ jobs:
               ],
             },
           };
-          ws.send(JSON.stringify(event));
+          ws.send(JSON.stringify(event), callback);
           console.log("Sent conversation.item.create:", event);
         };
 
@@ -130,7 +130,6 @@ jobs:
                 - Analyze the provided code changes.
                 - Identify one issue at a time.
                 - Respond in JSON format with: line number, file path, issue description, why it is an issue, and a suggested fix.
-                - Respond one issue object at a time, don't send them all together.
                 - Example response:
                   {
                     "line": 42,
@@ -192,15 +191,25 @@ jobs:
             })
             .filter(Boolean);
 
+          let delay = 0;
+
           for (const { filePath, addedLines } of changes) {
-            for (let i = 0; i < addedLines.length; i += 10) {
-              const chunk = addedLines.slice(i, i + 10);
+            for (let i = 0; i < addedLines.length; i += 50) { // Consolidate chunks into ~50 lines each
+              const chunk = addedLines.slice(i, i + 50);
               const content = JSON.stringify(chunk, null, 2);
-              addItemToConversation(ws, content);
+
+              setTimeout(() => {
+                addItemToConversation(ws, content, () => {
+                  console.log("Prompt sent for chunk:", chunk);
+                  if (i + 50 >= addedLines.length) {
+                    requestResponse(ws);
+                  }
+                });
+              }, delay);
+
+              delay += 1500; // Add delay to avoid rate limits
             }
           }
-
-          requestResponse(ws);
         };
 
         connectToRealtimeAPI();

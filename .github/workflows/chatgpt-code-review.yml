@@ -138,7 +138,8 @@ jobs:
                           "filePath": "<file_path>",
                           "issueDescription": "<short_description>",
                           "whyIssue": "<why_this_is_an_issue>",
-                          "fix": "<code_snippet>"
+                          "fix": "<code_snippet>",
+                          "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
                         }
                       ]
                       If there are no issues, respond with:
@@ -166,7 +167,7 @@ jobs:
                     try {
                       const parsedFeedback = JSON.parse(feedbackContent);
                       parsedFeedback.forEach(item => {
-                        feedbacks.push({ ...item, commitId: null });
+                        feedbacks.push(item); // Include commitId from chunk
                       });
                     } catch (jsonError) {
                       console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
@@ -204,7 +205,8 @@ jobs:
                         "filePath": "<file_path>",
                         "issueDescription": "<short_description>",
                         "whyIssue": "<why_this_is_an_issue>",
-                        "fix": "<code_snippet>"
+                        "fix": "<code_snippet>",
+                          "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
                       }
                     ]
                     If there are no issues, respond with:
@@ -222,6 +224,8 @@ jobs:
                   });
 
                   const feedbackContent = response.choices[0].message.content;
+                  console.log(`Raw GPT Response:`, feedbackContent);
+
                   if (feedbackContent.trim() === '{ "status": "pass" }') {
                     console.log(`No issues found for ${filePath}`);
                     continue;
@@ -230,7 +234,7 @@ jobs:
                   try {
                     const parsedFeedback = JSON.parse(feedbackContent);
                     parsedFeedback.forEach(item => {
-                      feedbacks.push(item);
+                      feedbacks.push(item); // Include commitId from chunk
                     });
                   } catch (jsonError) {
                     console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);

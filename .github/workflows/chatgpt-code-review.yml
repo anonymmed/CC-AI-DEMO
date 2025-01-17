@@ -84,9 +84,18 @@ jobs:
 
                 for (const line of lines) {
                   if (line.startsWith('+') && !line.startsWith('+++')) {
+                    let commitHash;
+                    try {
+                      commitHash = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
+                    } catch (error) {
+                      console.error(`Failed to get commit hash for ${filePath} at line ${lineCounter}:`, error.message);
+                      commitHash = 'unknown';
+                    }
+
                     addedLines.push({
                       lineNumber: lineCounter,
-                      lineDiff: line.slice(1)
+                      lineDiff: line.slice(1),
+                      commitId: commitHash
                     });
                     lineCounter++;
                   }
@@ -213,6 +222,8 @@ jobs:
                   });
 
                   const feedbackContent = response.choices[0].message.content;
+                  console.log(`GPT Prompt is :`, messages);
+                  console.log('##############################################');
                   console.log(`Raw GPT Response:`, feedbackContent);
 
                   if (feedbackContent.trim() === '{ "status": "pass" }') {

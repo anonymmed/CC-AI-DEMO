@@ -29,7 +29,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-
       - name: Install Dependencies
-        run: npm install openai @octokit/rest@18.12.0 esprima
+        run: npm install openai @octokit/rest@18.12.0
       - name: Load Cache for Reviewed Commits
         id: load_cache
         uses: actions/cache@v3
@@ -288,6 +288,52 @@ jobs:
           EOF
 
           node generate_feedback.js
+
+      - name: Post Inline Comments
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat <<'EOF' > post_comments.js
+          const fs = require('fs');
+          const { Octokit } = require('@octokit/rest');
+
+          const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
+          async function postComments() {
+            try {
+              const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
+              const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+              const pull_number = process.env.PR_NUMBER || process.env.GITHUB_REF.split('/')[2];
+
+              for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
+                const body = `${issueDescription}\n\n**Why:** ${whyIssue}\n\n**Fix:**\n\`\`\`\n${fix}\n\`\`\``;
+
+                try {
+                  await octokit.pulls.createReviewComment({
+                    owner,
+                    repo,
+                    pull_number,
+                    body,
+                    path: filePath,
+                    line,
+                    commit_id: commitId,
+                  });
+                  console.log(`Comment posted for ${filePath} at line ${line}`);
+                } catch (err) {
+                  console.error(`Failed to post comment for ${filePath} at line ${line}:`, err.message);
+                }
+              }
+            } catch (error) {
+              console.error('Error posting comments:', error.message);
+              process.exit(1);
+            }
+          }
+
+          postComments();
+          EOF
+
+          node post_comments.js
+    
       - name: Save Updated Reviewed Commits
         id: save_commits
         run: |

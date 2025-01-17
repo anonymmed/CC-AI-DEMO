@@ -68,10 +68,13 @@ jobs:
           });
 
           ws.on("message", (message) => {
+            console.log("Received message from server:", message);
             const event = JSON.parse(message);
 
             if (event.type === "response.text.done") {
               const response = JSON.parse(event.response.output[0].content[0].text);
+              
+              console.log("Processed response:", response);
 
               if (response.last) {
                 console.log("All issues processed. Closing connection.");
@@ -83,7 +86,7 @@ jobs:
           });
 
           ws.on("close", () => {
-            console.log("Connection closed.");
+            console.log("WebSocket connection closed.");
           });
 
           ws.on("error", (error) => {
@@ -100,6 +103,7 @@ jobs:
             type: "conversation.create",
           };
           ws.send(JSON.stringify(event));
+          console.log("Sent conversation.create event.");
           ws.on("message", (message) => {
             const event = JSON.parse(message);
             if (event.type === "conversation.created") {
@@ -126,6 +130,7 @@ jobs:
             },
           };
           ws.send(JSON.stringify(event));
+          console.log("Added item to conversation:", event);
         };
 
         const requestResponse = (ws) => {
@@ -151,6 +156,7 @@ jobs:
             },
           };
           ws.send(JSON.stringify(event));
+          console.log("Sent response.create event:", event);
         };
 
         const postInlineComment = async (issue) => {
@@ -174,6 +180,7 @@ jobs:
 
         const processDiff = (ws) => {
           const diff = execSync(`git diff origin/${process.env.GITHUB_BASE_REF}`).toString();
+          console.log("Processing diff...");
           const changes = diff.split('diff --git')
             .slice(1)
             .map(change => {
@@ -208,6 +215,7 @@ jobs:
             }
           }
 
+          console.log("Requesting response...");
           requestResponse(ws);
         };
 

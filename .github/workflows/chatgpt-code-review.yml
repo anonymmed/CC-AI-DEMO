@@ -71,7 +71,8 @@ jobs:
                 } else {
                   postInlineComment(response);
                 }
-              }
+              } else {
+               console.log('not done .. : Received message from server:', event);}
             } catch (err) {
               console.error("Error parsing message:", err.message);
             }

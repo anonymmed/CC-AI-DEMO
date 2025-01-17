@@ -149,7 +149,7 @@ jobs:
             const isLast = index === changes.length - 1;
             const userPrompt = {
               type: "input_text",
-              text: `Review the changes in ${change.filePath}:\n${JSON.stringify(change.addedLines, null, 2)}\nRespond in JSON format:\n[\n  {\n    "line": <line_number>,\n    "filePath": "<file_path>",\n    "issueDescription": "<short_description>",\n    "whyIssue": "<why_this_is_an_issue>",\n    "fix": "<code_snippet>",\n    "commitId": "<commit_id>"\n  }\n]\nIf no issues, respond with:\n{ "status": "pass" }${isLast ? ', "last": true' : ''}`.
+              text: `Review the changes in ${change.filePath}:\n${JSON.stringify(change.addedLines, null, 2)}\nRespond in JSON format:\n[\n  {\n    "line": <line_number>,\n    "filePath": "<file_path>",\n    "issueDescription": "<short_description>",\n    "whyIssue": "<why_this_is_an_issue>",\n    "fix": "<code_snippet>",\n    "commitId": "<commit_id>"\n  }\n]\nIf no issues, respond with:\n{ "status": "pass" }${isLast ? ', "last": true' : ''}`,
             };
 
             ws.send(
@@ -160,7 +160,6 @@ jobs:
             );
           });
         };
-
         const postInlineComment = async (issue) => {
           const { filePath, lineNumber, commitId, issueDescription, whyIssue, fix } = issue;
           const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');

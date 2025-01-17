@@ -1,6 +1,6 @@
 name: Reset Reviewed Commits Cache
 
-on:
+'on':
   workflow_dispatch:  # This ensures the workflow is only run manually
 
 permissions:

@@ -69,7 +69,7 @@ jobs:
 
           ws.on("message", (message) => {
             console.log("Received message from server:", message);
-            const event = JSON.parse(message);
+            const event = JSON.parse(message.toString());
 
             if (event.type === "response.text.done") {
               const response = JSON.parse(event.response.output[0].content[0].text);

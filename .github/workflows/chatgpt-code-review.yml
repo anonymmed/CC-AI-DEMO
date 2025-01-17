@@ -86,7 +86,7 @@ jobs:
                   if (line.startsWith('+') && !line.startsWith('+++')) {
                     let commitHash;
                     try {
-                      commitHash = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain -- HEAD ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
+                      commitHash = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
                     } catch (error) {
                       console.error(`Failed to get commit hash for ${filePath} at line ${lineCounter}:`, error.message);
                       commitHash = 'unknown';

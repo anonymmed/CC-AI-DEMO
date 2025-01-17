@@ -35,7 +35,9 @@ namespace CodeTest
 
         public void ValidateInput(string param)
         {
-            if (string.IsNullOrEmpty(param)) return;
+            if (string.IsNullOrEmpty(param))
+                return;
+                
             Console.WriteLine("Valid input");
         }
 

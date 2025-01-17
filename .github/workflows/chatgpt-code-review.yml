@@ -86,22 +86,26 @@ jobs:
         const sendSystemPrompt = (ws) => {
           const rulesPath = '.github/workflows/rules.json';
           const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
-          console.log('found rules: ', rules);
           const systemPrompt = {
             role: "system",
             content: `You are an AI code reviewer. Use the following rules strictly to identify issues. Provide responses strictly in JSON format indicated by user. Do not respond until all prompts are sent, indicated by the final input marked with "last: true". All responses should include the correct line number for each issue so the review solution will be displayed correctly next to the issue. Rules: ${JSON.stringify(rules)}.`,
           };
-
+          console.log("Sending system prompt.");
           ws.send(
             JSON.stringify({
               type: "conversation.item.create",
               item: { type: "message", role: "system", content: [systemPrompt] },
-            }),
-            () => processDiff(ws)
+            })
           );
+          // Ensure processDiff is called shortly after sending the system prompt
+          setTimeout(() => {
+            console.log("System prompt sent. Starting diff processing...");
+            processDiff();
+          }, 500); // Small delay to ensure system prompt is processed first
+
         };
 
-        const processDiff = (ws) => {
+        const processDiff = () => {
           const diff = execSync(`git diff origin/${process.env.GITHUB_BASE_REF}`).toString();
           const changes = diff.split('diff --git')
             .slice(1)

@@ -8,7 +8,8 @@ permissions:
   contents: write
   pull-requests: write
   repository-projects: write
-
+env:
+  PR_NUMBER: ${{ github.event.number }}
 jobs:
   code_review:
     runs-on: ubuntu-latest
@@ -230,7 +231,6 @@ jobs:
     - name: Post Inline Comments
       env:
         GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
-        PR_NUMBER: ${{ github.event.number }}
       run: |
         cat <<'EOF' > post_comments.js
         const fs = require('fs');

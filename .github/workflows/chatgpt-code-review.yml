@@ -231,35 +231,40 @@ jobs:
         const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
         // Function to map line numbers to GitHub diff positions
+        // Map file line numbers to GitHub diff positions
         function mapLineToPosition(diff, filePath, lineNumber) {
           const lines = diff.split('\n');
           let currentFile = null;
-          let positionInHunk = 0;
-          let diffPosition = 0;
+          let position = 0; // Global diff position for GitHub API
+          let lineInFile = 0; // Tracks actual line number in the new file
 
           for (const line of lines) {
             if (line.startsWith('@@')) {
+              // Start of a new hunk
               const match = line.match(/@@ -\d+(,\d+)? \+(\d+)(,\d+)? @@/);
               if (match) {
-                positionInHunk = parseInt(match[2], 10); // Start of the hunk in the new file
-                console.log(`Parsing hunk: Start line in new file = ${positionInHunk}`);
+                lineInFile = parseInt(match[2], 10); // Starting line in new file for this hunk
+                console.log(`Parsing hunk: Start line in new file = ${lineInFile}, Position = ${position}`);
               }
             } else if (line.startsWith('+++')) {
               currentFile = line.split(' ')[1]?.replace('b/', '');
-              console.log(`Processing file: ${currentFile}`);
             } else if (line.startsWith('+') && currentFile === filePath) {
-              diffPosition++;
-              if (positionInHunk === lineNumber) {
-                console.log(`Mapped file: ${filePath}, Line: ${lineNumber}, Diff Position: ${diffPosition}`);
-                return diffPosition; // Return the diff position for GitHub API
+              position++;
+              if (lineInFile === lineNumber) {
+                console.log(`Mapped file: ${filePath}, Line: ${lineNumber}, Diff Position: ${position}`);
+                return position;
               }
-              positionInHunk++;
+              lineInFile++;
+            } else if (!line.startsWith('-')) {
+              // Context line, included in the position but doesn't increment lineInFile
+              position++;
             }
           }
 
-          console.warn(`Could not map line ${lineNumber} in file ${filePath} to a diff position.`);
-          return null; // Line not found in diff
+          console.warn(`Could not map line ${lineNumber} in file ${filePath} to a GitHub position.`);
+          return null;
         }
+
 
         async function postComments() {
           try {

@@ -78,7 +78,6 @@ jobs:
                     try {
                         const blameOutput = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain HEAD -- ${filePath}`).toString().trim();
                         commitHash = blameOutput.split('\n')[0].split(' ')[0];
-                        console.log(`Blame output for line ${lineCounter} in file ${filePath}:\n${blameOutput}`);
                         const originalLineMatch = blameOutput.split('\n')[0].split(' ')[1];
                         originalLine = originalLineMatch ? parseInt(originalLineMatch, 10) : lineCounter; // Fallback to current line
                         console.log('parsedOriginalLine: ${parseInt(originalLineMatch, 10)}');
@@ -105,9 +104,13 @@ jobs:
             for (const { filePath, addedLines } of changes) {
               let chunk = [];
               let currentTokenCount = 0;
+              let chunkIndex = 1; // Initialize a counter to track chunks
               for (const line of addedLines) {
                 const lineTokenEstimate = Math.ceil((line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN);
                 if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {
+                / Log before sending the current chunk
+                console.log(`Sending chunk ${chunkIndex} for file ${filePath}...`);
+
                   // Process the current chunk
                   const messages = [
                     {
@@ -162,6 +165,7 @@ jobs:
                   // Reset for the next chunk
                   chunk = [];
                   currentTokenCount = 0;
+                  chunkIndex++; // Increment the chunk counter
                 }
                 chunk.push(line);
                 currentTokenCount += lineTokenEstimate;

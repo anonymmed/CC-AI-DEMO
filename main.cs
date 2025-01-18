@@ -28,9 +28,9 @@ namespace CodeTest
             return readOnlyService.GetData();
         }
 
-        public void HandleError()
+        public void HandleError(str a)
         {
-            throw new KeyNotFoundException("Entity not found");
+            throw new KeyNotFoundException(nameof("a"));
         }
 
         public void ValidateInput(string param)

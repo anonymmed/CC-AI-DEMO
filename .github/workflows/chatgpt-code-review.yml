@@ -64,8 +64,8 @@ jobs:
             const changes = diff.split('diff --git')
               .slice(1)
               .map(change => {
-                const lines = change.split('\\n');
-                const filePathMatch = lines[0]?.match(/b\\/(\\S+)/);
+                const lines = change.split('\n');
+                const filePathMatch = lines[0]?.match(/b\/(\S+)/);
                 const filePath = filePathMatch ? filePathMatch[1] : null;
                 if (!filePath) return null;
 
@@ -114,13 +114,13 @@ jobs:
         const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
 
         function getMappedLine(diff, filePath, targetLine) {
-          const lines = diff.split('\\n');
+          const lines = diff.split('\n');
           let currentFile = null;
           let position = 0;
 
           for (const line of lines) {
             if (line.startsWith('@@')) {
-              const match = line.match(/@@ -\\d+,\\d+ \\+(\\d+),/);
+              const match = line.match(/@@ -\d+,\d+ \+(\d+),/);
               if (match) {
                 const startLine = parseInt(match[1], 10);
                 if (targetLine >= startLine) position = startLine;

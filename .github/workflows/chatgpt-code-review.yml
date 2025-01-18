@@ -36,16 +36,14 @@ jobs:
     - name: Fetch PR Diff
       id: get_diff
       run: |
-        git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.js' '*.ts' '*.sql' > pr_diff.txt > pr_diff.txt
+        git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.js' '*.ts' '*.sql' > pr_diff.txt
     - name: Generate ChatGPT Feedback
       id: generate_feedback
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        PR_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
         cat <<'EOF' > generate_feedback.js
         const fs = require('fs');
-        const { execSync } = require('child_process');
         const { OpenAI } = require('openai');
         const openai = new OpenAI({
           apiKey: process.env.OPENAI_API_KEY,
@@ -75,18 +73,10 @@ jobs:
                 let lineCounter = position || 0;
                 for (const line of lines) {
                   if (line.startsWith('+') && !line.startsWith('+++')) {
-                    let commitHash;
-                    try {
-                      const prSha = process.env.PR_SHA;
-                      commitHash = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain ${prSha} -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
-                    } catch (error) {
-                      console.error(`Failed to get commit hash for ${filePath} at line ${lineCounter}:`, error.message);
-                      commitHash = 'unknown';
-                    }
                     addedLines.push({
                       lineNumber: lineCounter,
                       lineDiff: line.slice(1),
-                      commitId: commitHash
+                      commitId: null // Placeholder for commitId to be added later
                     });
                     lineCounter++;
                   }
@@ -125,8 +115,7 @@ jobs:
                           "filePath": "<file_path>",
                           "issueDescription": "<short_description>",
                           "whyIssue": "<why_this_is_an_issue>",
-                          "fix": "<code_snippet>",
-                          "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
+                          "fix": "<code_snippet>"
                         }
                       ]
                       If there are no issues, respond with:
@@ -186,8 +175,7 @@ jobs:
                         "filePath": "<file_path>",
                         "issueDescription": "<short_description>",
                         "whyIssue": "<why_this_is_an_issue>",
-                        "fix": "<code_snippet>",
-                        "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
+                        "fix": "<code_snippet>"
                       }
                     ]
                     If there are no issues, respond with:
@@ -230,6 +218,34 @@ jobs:
         generateFeedback();
         EOF
         node generate_feedback.js
+
+    - name: Add Commit Hashes to Feedback
+      id: add_commit_hashes
+      run: |
+        cat <<'EOF' > add_commit_hashes.js
+        const fs = require('fs');
+        const { execSync } = require('child_process');
+
+        function addCommitHashes(feedbacks) {
+          feedbacks.forEach(item => {
+            const { filePath, line } = item;
+            try {
+              const commitHash = execSync(`git blame -L ${line},${line} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
+              item.commitId = commitHash;
+            } catch (error) {
+              console.error(`Failed to get commit hash for ${filePath} at line ${line}:`, error.message);
+              item.commitId = 'unknown';
+            }
+          });
+          return feedbacks;
+        }
+
+        const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
+        const updatedFeedbacks = addCommitHashes(feedbacks);
+        fs.writeFileSync('feedbacks.json', JSON.stringify(updatedFeedbacks, null, 2));
+        EOF
+        node add_commit_hashes.js
+
     - name: Post Inline Comments
       env:
         GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
@@ -245,7 +261,7 @@ jobs:
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const pull_number = process.env.PR_NUMBER;
             for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
-              const body = `${issueDescription} | ${whyIssue}  in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
+              const body = `${issueDescription} | ${whyIssue} in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
               console.log(`Posting comment for ${filePath} at line ${line}, commit ${commitId}`);
               try {
                 await octokit.pulls.createReviewComment({

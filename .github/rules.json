@@ -41,7 +41,7 @@
   },
   {
     "rule": "Custom Exception Usage",
-    "description": "Use the custom exception type `EntityNotFoundException` for handling cases where an entity is not found.",
+    "description": "Use the custom exception type `EntityNotFoundException` for handling cases where an entity is not found instead of KeyNotFoundException",
     "example": "throw new EntityNotFoundException();"
   },
   {

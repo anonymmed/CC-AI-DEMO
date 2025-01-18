@@ -10,7 +10,7 @@ permissions:
   repository-projects: write
 
 env:
-  PR_NUMBER: ${{ github.event.number }}
+  GITHUB_EVENT_PULL_REQUEST_NUMBER: ${{ github.event.number }}
 jobs:
   code_review:
     runs-on: ubuntu-latest

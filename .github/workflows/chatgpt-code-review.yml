@@ -36,7 +36,7 @@ jobs:
     - name: Fetch PR Diff
       id: get_diff
       run: |
-        git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
+        git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.ts' '*.js' '*.sql' > pr_diff.txt
     - name: Generate ChatGPT Feedback
       id: generate_feedback
       env:
@@ -73,15 +73,18 @@ jobs:
                 let lineCounter = position || 0;
                 for (const line of lines) {
                   if (line.startsWith('+') && !line.startsWith('+++')) {
-                    let commitHash;
                     try {
-                      commitHash = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
+                        const blameOutput = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain HEAD -- ${filePath}`).toString().trim();
+                        const commitHash = blameOutput.split('\n')[0].split(' ')[0];
+                        const originalLineMatch = blameOutput.match(/^\s*\d+\s+(\d+)\s+\d+\s+\d+/m);
+                        const originalLine = originalLineMatch ? parseInt(originalLineMatch[1], 10) : lineCounter; // Use current line if parsing fails
+                        console.log(`commit hash is ${commitHash}, original line is ${originalLine}`);
                     } catch (error) {
                       console.error(`Failed to get commit hash for ${filePath} at line ${lineCounter}:`, error.message);
                       commitHash = 'unknown';
                     }
                     addedLines.push({
-                      lineNumber: lineCounter,
+                      lineNumber: originalLine, // Use the original line number from blame
                       lineDiff: line.slice(1),
                       commitId: commitHash
                     });

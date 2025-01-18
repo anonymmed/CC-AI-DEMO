@@ -252,8 +252,8 @@ jobs:
             const commentPromises = [];
         
             // Loop through feedbacks and create a promise for each comment
-            for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
-              const body = `${issueDescription} \n ${whyIssue}  in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
+            for (const { filePath, line, commitId, issueDescription, fix } of feedbacks) {
+              const body = `${issueDescription} \n  in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
         
               console.log(`Preparing comment for ${filePath} at line ${line}, commit ${commitId}`);
         

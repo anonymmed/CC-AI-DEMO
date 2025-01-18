@@ -37,6 +37,56 @@ jobs:
       id: get_diff
       run: |
         git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.js' '*.ts' '*.sql' > pr_diff.txt
+
+    - name: Map Diff Line Numbers
+      id: map_diff
+      run: |
+        cat <<'EOF' > map_diff.js
+        const fs = require('fs');
+
+        function getDiffLineNumber(diff, filePath, targetLine) {
+          const lines = diff.split('\n');
+          let position = 0; // GitHub's relative position counter
+          let currentFile = null;
+
+          for (const line of lines) {
+            if (line.startsWith('@@')) {
+              const match = line.match(/@@ -\d+,\d+ \+(\d+),/);
+              if (match) {
+                const diffStartLine = parseInt(match[1], 10);
+                if (targetLine < diffStartLine) {
+                  return null; // Target line is not in this hunk
+                }
+              }
+            } else if (line.startsWith('+++')) {
+              currentFile = line.split(' ')[1];
+            } else if (line.startsWith('+') && currentFile === filePath) {
+              position++;
+              if (position === targetLine) {
+                return position;
+              }
+            }
+          }
+
+          return null; // Line not found in diff
+        }
+
+        // Example usage
+        const diff = fs.readFileSync('pr_diff.txt', 'utf8');
+        const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
+
+        feedbacks.forEach(feedback => {
+          feedback.addedLines.forEach(line => {
+            const mappedLine = getDiffLineNumber(diff, feedback.filePath, line.lineNumber);
+            console.log(`Expected Line: ${line.lineNumber}, Mapped GitHub Line: ${mappedLine}`);
+            line.mappedLine = mappedLine;
+          });
+        });
+
+        fs.writeFileSync('feedbacks.json', JSON.stringify(feedbacks, null, 2));
+        EOF
+        node map_diff.js
+
     - name: Generate ChatGPT Feedback
       id: generate_feedback
       env:

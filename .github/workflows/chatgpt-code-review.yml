@@ -51,10 +51,10 @@ jobs:
         });
         const rulesPath = '.github/rules.json';
         const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
-        const MAX_TOKENS = 4000;
+        const MAX_TOKENS = 4000; // Updated max tokens
         const AVERAGE_LINE_CHARACTERS = 80; // Approximate average line length
         const CHARACTERS_PER_TOKEN = 4; // Approximate characters per token
-        const RESERVED_TOKENS = 1000; // Reserve for the response
+        const RESERVED_TOKENS = 2000; // Reserve for the response
 
         async function generateFeedback() {
           try {
@@ -100,17 +100,16 @@ jobs:
             for (const { filePath, addedLines } of changes) {
               let chunk = [];
               let currentTokenCount = 0;
-              for (const [index, line] of addedLines.entries()) {
+              for (const line of addedLines) {
                 const lineTokenEstimate = Math.ceil((line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN);
                 if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {
                   // Process the current chunk
-                  const isLastLine = index === addedLines.length - 1;
                   const messages = [
                     {
                       "role": "system",
                       "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. 
                       If the last line in the provided lines appears to have incomplete context and could be resolved by subsequent lines, wait for the next input to confirm. If the issue persists after reviewing the next input, include it in the response.
-                      rules: ${JSON.stringify(rules, null, 2)}`
+                      Rules: ${JSON.stringify(rules, null, 2)}`
                     },
                     {
                       "role": "user",
@@ -144,17 +143,15 @@ jobs:
                     console.log(`Raw GPT Response:`, feedbackContent);
                     if (feedbackContent.trim() === '{ "status": "pass" }') {
                       console.log(`No issues found for ${filePath}`);
-                      chunk = [];
-                      currentTokenCount = 0;
-                      continue;
+                    } else {
+                      try {
+                        const parsedFeedback = JSON.parse(feedbackContent);
+                        parsedFeedback.forEach(item => {
+                          feedbacks.push(item);
+                        });
+                      } catch (jsonError) {
+                        console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
                       }
-                    try {
-                      const parsedFeedback = JSON.parse(feedbackContent);
-                      parsedFeedback.forEach(item => {
-                        feedbacks.push(item);
-                      });
-                    } catch (jsonError) {
-                      console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
                     }
                   } catch (error) {
                     console.error(`Error processing feedback for ${filePath}:`, error.message);
@@ -172,7 +169,8 @@ jobs:
                   {
                     "role": "system",
                     "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. 
-                    If the last line in the provided lines appears to have incomplete context and could be resolved by subsequent lines, wait for the next input to confirm. If the issue persists after reviewing the next input, include it in the response.`
+                    If the last line in the provided lines appears to have incomplete context and could be resolved by subsequent lines, wait for the next input to confirm. If the issue persists after reviewing the next input, include it in the response.
+                    Rules: ${JSON.stringify(rules, null, 2)}`
                   },
                   {
                     "role": "user",
@@ -202,20 +200,19 @@ jobs:
                     max_tokens: RESERVED_TOKENS,
                     n: 1,
                   });
-                  console.log(`Sending messages : ${JSON.stringify(chunk, null, 2)}`);
                   const feedbackContent = response.choices[0].message.content;
                   console.log(`Raw GPT Response:`, feedbackContent);
                   if (feedbackContent.trim() === '{ "status": "pass" }') {
                     console.log(`No issues found for ${filePath}`);
-                    continue;
-                  }
-                  try {
-                    const parsedFeedback = JSON.parse(feedbackContent);
-                    parsedFeedback.forEach(item => {
-                      feedbacks.push(item);
-                    });
-                  } catch (jsonError) {
-                    console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
+                  } else {
+                    try {
+                      const parsedFeedback = JSON.parse(feedbackContent);
+                      parsedFeedback.forEach(item => {
+                        feedbacks.push(item);
+                      });
+                    } catch (jsonError) {
+                      console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
+                    }
                   }
                 } catch (error) {
                   console.error(`Error processing feedback for ${filePath}:`, error.message);

@@ -1,13 +1,13 @@
 [
   {
-    "rule": "Function Documentation",
-    "description": "All functions must include a summary comment or inheritdoc.",
-    "example": "/// <summary>\n/// This function adds two numbers.\n/// </summary>"
+    "rule": "Function Documentation and Summary Format",
+    "description": "All functions must include a summary comment or inheritdoc. The summary must describe the function's purpose, include all parameters with their descriptions, and specify the return type, if applicable. All documentation must follow proper formatting and be in English without any typos.",
+    "example": "/// <summary>\n/// Calculates the sum of two numbers.\n/// </summary>\n/// <param name=\"a\">The first number.</param>\n/// <param name=\"b\">The second number.</param>\n/// <returns>The sum of the numbers.</returns>"
   },
   {
-    "rule": "Summary Comments Format",
-    "description": "Summary comments must match the function return type and parameter names.",
-    "example": "/// <summary>\n/// Calculates the sum of two numbers.\n/// </summary>\n/// <param name=\"a\">The first number.</param>\n/// <param name=\"b\">The second number.</param>\n/// <returns>The sum of the numbers.</returns>"
+    "rule": "Maintain Empty Lines Between Functions",
+    "description": "All methods in a class must have a single blank line separating them to improve readability and maintain a consistent structure.",
+    "example": "public void Method1() { }\n\npublic void Method2() { }"
   },
   {
     "rule": "SQL Query Best Practices",
@@ -20,9 +20,9 @@
     "example": "public void HandleError()"
   },
   {
-    "rule": "nameof Usage",
-    "description": "Avoid using string literals in the `nameof` operator; always reference variables directly.",
-    "example": "nameof(variableName)"
+    "rule": "Avoid Magic Numbers",
+    "description": "Avoid using magic numbers in the code; instead, use named constants or variables.",
+    "example": "const int MaxRetries = 5;\nfor (int i = 0; i < MaxRetries; i++) { }"
   },
   {
     "rule": "Curly Braces for If Statements",
@@ -30,14 +30,14 @@
     "example": "if (condition) { return true; }"
   },
   {
-    "rule": "Use Constants Instead of Default",
-    "description": "Use constants (e.g., `0`, `null`, `false`) instead of `default(type)` for non-generic types.",
-    "example": "int value = 0; // Instead of default(int)"
+    "rule": "Consistent Indentation",
+    "description": "Use consistent indentation throughout the codebase, such as 4 spaces for C#.",
+    "example": "public void SampleFunction() { }"
   },
   {
-    "rule": "Service Variable Naming",
-    "description": "Avoid including 'read-only' or 'read-write' in service variable names to promote clarity and consistency.",
-    "example": "var userService = new UserService();"
+    "rule": "Consistent Naming for Variables",
+    "description": "Use camelCase for local variables and parameters in C#.",
+    "example": "int totalItems = 10;"
   },
   {
     "rule": "Custom Exception Usage",
@@ -50,13 +50,58 @@
     "example": "// TODO DEV-23710: Refactor to use CertificateService.GetCertificateContent()"
   },
   {
-    "rule": "Comment Quality",
-    "description": "All comments, documentation, and user-facing strings must be free of typos, grammatical errors, and unclear language.",
-    "example": "// Correct: Calculates the total cost of an order."
+    "rule": "Avoid Deep Nesting",
+    "description": "Avoid deeply nested blocks of code; refactor into smaller, more readable methods.",
+    "example": "if (condition1 && condition2) { HandleLogic(); }"
   },
   {
-    "rule": "Method Separation",
-    "description": "All methods in a class must have a single blank line separating them for better readability.",
-    "example": "public void Method1() { }\n\npublic void Method2() { }"
+    "rule": "Null Checking Best Practices",
+    "description": "Use null-checking best practices, such as null-coalescing operators or helper methods.",
+    "example": "string name = input ?? \"Default Name\";"
+  },
+  {
+    "rule": "String Interpolation Over Concatenation",
+    "description": "Use string interpolation ($\"...\") instead of string concatenation (+) for better readability and performance.",
+    "example": "string message = $\"Hello, {name}!\";"
+  },
+  {
+    "rule": "Avoid Async Void Methods",
+    "description": "Always use async Task instead of async void unless it's an event handler.",
+    "example": "public async Task ProcessDataAsync() { }"
+  },
+  {
+    "rule": "Use nameof for Parameter Validation",
+    "description": "Use the nameof operator instead of hardcoded strings for parameter validation.",
+    "example": "if (value == null) throw new ArgumentNullException(nameof(value));"
+  },
+  {
+    "rule": "Avoid Blocking Calls on Tasks",
+    "description": "Avoid .Result or .Wait() on tasks; use await instead.",
+    "example": "var result = await SomeAsyncMethod();"
+  },
+  {
+    "rule": "Use readonly for Immutable Fields",
+    "description": "Mark fields that don't change after initialization as readonly.",
+    "example": "private readonly int value;"
+  },
+  {
+    "rule": "Use StringComparison for String Comparisons",
+    "description": "Specify StringComparison explicitly to avoid culture-related bugs.",
+    "example": "if (name.Equals(\"test\", StringComparison.OrdinalIgnoreCase)) { }"
+  },
+  {
+    "rule": "Avoid Catching System.Exception",
+    "description": "Catch specific exceptions instead of the general System.Exception.",
+    "example": "try { } catch (FileNotFoundException ex) { }"
+  },
+  {
+    "rule": "Avoid Public Fields",
+    "description": "Use properties instead of public fields to encapsulate data.",
+    "example": "public int Value { get; set; }"
+  },
+  {
+    "rule": "Avoid Empty Catch Blocks",
+    "description": "Never leave catch blocks empty; at least log the exception.",
+    "example": "try { } catch (Exception ex) { Log(ex); }"
   }
 ]

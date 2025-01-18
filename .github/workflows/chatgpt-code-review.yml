@@ -110,7 +110,8 @@ jobs:
                     {
                       "role": "system",
                       "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. 
-                      If the last line in the provided lines appears to have incomplete context and could be resolved by subsequent lines, wait for the next input to confirm. If the issue persists after reviewing the next input, include it in the response.`
+                      If the last line in the provided lines appears to have incomplete context and could be resolved by subsequent lines, wait for the next input to confirm. If the issue persists after reviewing the next input, include it in the response.
+                      rules: ${JSON.stringify(rules, null, 2)}`
                     },
                     {
                       "role": "user",

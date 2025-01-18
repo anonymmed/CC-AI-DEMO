@@ -100,7 +100,7 @@ jobs:
             for (const { filePath, addedLines } of changes) {
               let chunk = [];
               let currentTokenCount = 0;
-              for (let i = 0; i < addedLines.length; i++) {
+              for (const line of addedLines) {
                 const line = addedLines[i];
                 const lineTokenEstimate = Math.ceil((line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN);
                 if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {

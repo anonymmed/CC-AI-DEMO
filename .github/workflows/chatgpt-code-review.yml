@@ -128,8 +128,7 @@ jobs:
                           "line": <line_number>,
                           "filePath": "<file_path>",
                           "issueDescription": "<short_description>",
-                          "whyIssue": "<why_this_is_an_issue>",
-                          "fix": "<code_snippet>",
+                          "fix": "<code_snippet_for_all_suggested_fixes>",
                           "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
                         }
                       ]
@@ -191,9 +190,8 @@ jobs:
                         "line": <line_number>,
                         "filePath": "<file_path>",
                         "issueDescription": "<short_description>",
-                        "whyIssue": "<why_this_is_an_issue>",
-                        "fix": "<code_snippet>",
-                          "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
+                        "fix": "<code_snippet_for_all_suggested_fixes>",
+                        "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
                       }
                     ]
                     If there are no issues, respond with:
@@ -255,7 +253,7 @@ jobs:
         
             // Loop through feedbacks and create a promise for each comment
             for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
-              const body = `${issueDescription} | ${whyIssue}  in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
+              const body = `${issueDescription} \n ${whyIssue}  in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
         
               console.log(`Preparing comment for ${filePath} at line ${line}, commit ${commitId}`);
         

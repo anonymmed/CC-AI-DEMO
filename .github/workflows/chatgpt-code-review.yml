@@ -189,7 +189,7 @@ jobs:
                       {
                         "line": <line_number>,
                         "filePath": "<file_path>",
-                        "issueDescription": "<short_description>",
+                        "issueDescription": "<short_description_about_the_different_rules_violated>",
                         "fix": "<code_snippet_for_all_suggested_fixes>",
                         "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
                       }

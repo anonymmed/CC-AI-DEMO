@@ -175,8 +175,11 @@ jobs:
                 const messages = [
                   {
                     "role": "system",
-                    "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. Provide the correct line number for each issue so the review solution will be displayed correctly next to the issue. always check if multiple rules are being violated and not only one, if multiple rules found violated, they all should be included in the review `
-                  },
+                    "content": `You are an AI reviewing code. Your job is to identify all issues in the provided changes according to the following rules: ${JSON.stringify(rules)}. 
+                    - For each line of code, check against all rules and report every rule violation you find.
+                    - If multiple rules are violated on the same line, include all of them in the response.
+                    - Always respond with valid JSON in this format:
+                      },
                   {
                     "role": "user",
                     "content": `

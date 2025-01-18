@@ -101,7 +101,6 @@ jobs:
               let chunk = [];
               let currentTokenCount = 0;
               for (const [index, line] of addedLines.entries()) {
-                const line = addedLines[i];
                 const lineTokenEstimate = Math.ceil((line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN);
                 if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {
                   // Process the current chunk

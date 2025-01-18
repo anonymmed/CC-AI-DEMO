@@ -200,7 +200,7 @@ jobs:
                     max_tokens: RESERVED_TOKENS,
                     n: 1,
                   });
-                  console.log(`Sending messages : ${JSON.stringify(chunk, null, 2)});
+                  console.log(`Sending messages : ${JSON.stringify(chunk, null, 2)}`);
                   const feedbackContent = response.choices[0].message.content;
                   console.log(`Raw GPT Response:`, feedbackContent);
                   if (feedbackContent.trim() === '{ "status": "pass" }') {

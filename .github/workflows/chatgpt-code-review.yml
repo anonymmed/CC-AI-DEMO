@@ -41,6 +41,7 @@ jobs:
       id: generate_feedback
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        PR_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
         cat <<'EOF' > generate_feedback.js
         const fs = require('fs');
@@ -76,7 +77,8 @@ jobs:
                   if (line.startsWith('+') && !line.startsWith('+++')) {
                     let commitHash;
                     try {
-                      commitHash = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
+                      const prSha = process.env.PR_SHA;
+                      commitHash = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain ${prSha} -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
                     } catch (error) {
                       console.error(`Failed to get commit hash for ${filePath} at line ${lineCounter}:`, error.message);
                       commitHash = 'unknown';

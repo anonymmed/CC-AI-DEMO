@@ -219,87 +219,87 @@ jobs:
         generateFeedback();
         EOF
         node generate_feedback.js
-        - name: Post Inline Comments
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
-          PR_NUMBER: ${{ github.event.number }}
-        run: |
-          cat <<'EOF' > post_comments.js
-          const fs = require('fs');
-          const { execSync } = require('child_process');
-          const { Octokit } = require('@octokit/rest');
-          const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-  
-          // Function to map line numbers to GitHub diff positions
-          function mapLineToPosition(diff, filePath, lineNumber) {
-            const lines = diff.split('\n');
-            let currentFile = null;
-            let positionInHunk = 0;
-            let diffPosition = 0;
-  
-            for (const line of lines) {
-              if (line.startsWith('@@')) {
-                const match = line.match(/@@ -\d+(,\d+)? \+(\d+)(,\d+)? @@/);
-                if (match) {
-                  positionInHunk = parseInt(match[2], 10); // Start of the hunk in the new file
-                  console.log(`Parsing hunk: Start line in new file = ${positionInHunk}`);
-                }
-              } else if (line.startsWith('+++')) {
-                currentFile = line.split(' ')[1]?.replace('b/', '');
-                console.log(`Processing file: ${currentFile}`);
-              } else if (line.startsWith('+') && currentFile === filePath) {
-                diffPosition++;
-                if (positionInHunk === lineNumber) {
-                  console.log(`Mapped file: ${filePath}, Line: ${lineNumber}, Diff Position: ${diffPosition}`);
-                  return diffPosition; // Return the diff position for GitHub API
-                }
-                positionInHunk++;
+    - name: Post Inline Comments
+      env:
+        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+        PR_NUMBER: ${{ github.event.number }}
+      run: |
+        cat <<'EOF' > post_comments.js
+        const fs = require('fs');
+        const { execSync } = require('child_process');
+        const { Octokit } = require('@octokit/rest');
+        const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
+        // Function to map line numbers to GitHub diff positions
+        function mapLineToPosition(diff, filePath, lineNumber) {
+          const lines = diff.split('\n');
+          let currentFile = null;
+          let positionInHunk = 0;
+          let diffPosition = 0;
+
+          for (const line of lines) {
+            if (line.startsWith('@@')) {
+              const match = line.match(/@@ -\d+(,\d+)? \+(\d+)(,\d+)? @@/);
+              if (match) {
+                positionInHunk = parseInt(match[2], 10); // Start of the hunk in the new file
+                console.log(`Parsing hunk: Start line in new file = ${positionInHunk}`);
               }
-            }
-  
-            console.warn(`Could not map line ${lineNumber} in file ${filePath} to a diff position.`);
-            return null; // Line not found in diff
-          }
-  
-          async function postComments() {
-            try {
-              const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
-              const diff = fs.readFileSync('pr_diff.txt', 'utf8');
-              const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
-              const pull_number = process.env.PR_NUMBER;
-  
-              for (const { filePath, line, issueDescription, whyIssue, fix } of feedbacks) {
-                try {
-                  // Map the line number to the GitHub diff position
-                  const position = mapLineToPosition(diff, filePath, line);
-                  if (position === null) {
-                    console.warn(`Could not map line ${line} in file ${filePath} to a GitHub position.`);
-                    continue;
-                  }
-  
-                  const commitId = execSync(`git blame -L ${line},${line} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
-                  const body = `${issueDescription} | ${whyIssue} \n\n${fix ? `Fix:\n\`\`\`\n${fix}\n\`\`\`` : ''}`;
-                  console.log(`Posting comment for file ${filePath}, line ${line}, mapped position ${position}, commit ${commitId}`);
-  
-                  await octokit.pulls.createReviewComment({
-                    owner,
-                    repo,
-                    pull_number,
-                    body,
-                    path: filePath,
-                    position,
-                    commit_id: commitId,
-                  });
-                } catch (err) {
-                  console.error(`Failed to post comment for ${filePath}:${line}`, err.message);
-                }
+            } else if (line.startsWith('+++')) {
+              currentFile = line.split(' ')[1]?.replace('b/', '');
+              console.log(`Processing file: ${currentFile}`);
+            } else if (line.startsWith('+') && currentFile === filePath) {
+              diffPosition++;
+              if (positionInHunk === lineNumber) {
+                console.log(`Mapped file: ${filePath}, Line: ${lineNumber}, Diff Position: ${diffPosition}`);
+                return diffPosition; // Return the diff position for GitHub API
               }
-            } catch (error) {
-              console.error('Error during posting comments:', error.message);
-              process.exit(1);
+              positionInHunk++;
             }
           }
-  
-          postComments();
-          EOF
-          node post_comments.js  
+
+          console.warn(`Could not map line ${lineNumber} in file ${filePath} to a diff position.`);
+          return null; // Line not found in diff
+        }
+
+        async function postComments() {
+          try {
+            const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
+            const diff = fs.readFileSync('pr_diff.txt', 'utf8');
+            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+            const pull_number = process.env.PR_NUMBER;
+
+            for (const { filePath, line, issueDescription, whyIssue, fix } of feedbacks) {
+              try {
+                // Map the line number to the GitHub diff position
+                const position = mapLineToPosition(diff, filePath, line);
+                if (position === null) {
+                  console.warn(`Could not map line ${line} in file ${filePath} to a GitHub position.`);
+                  continue;
+                }
+
+                const commitId = execSync(`git blame -L ${line},${line} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
+                const body = `${issueDescription} | ${whyIssue} \n\n${fix ? `Fix:\n\`\`\`\n${fix}\n\`\`\`` : ''}`;
+                console.log(`Posting comment for file ${filePath}, line ${line}, mapped position ${position}, commit ${commitId}`);
+
+                await octokit.pulls.createReviewComment({
+                  owner,
+                  repo,
+                  pull_number,
+                  body,
+                  path: filePath,
+                  position,
+                  commit_id: commitId,
+                });
+              } catch (err) {
+                console.error(`Failed to post comment for ${filePath}:${line}`, err.message);
+              }
+            }
+          } catch (error) {
+            console.error('Error during posting comments:', error.message);
+            process.exit(1);
+          }
+        }
+
+        postComments();
+        EOF
+        node post_comments.js  

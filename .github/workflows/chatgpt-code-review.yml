@@ -138,17 +138,33 @@ jobs:
             const feedbacks = [];
             for (const { filePath, addedLines } of changes) {
               const chunk = addedLines;
-              const messages = [
-                {
-                  role: 'system',
-                  content: `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues.\nRules:\n${JSON.stringify(rules, null, 2)}`
-                },
-                {
-                  role: 'user',
-                  content: `Review the following changes in the filePath \`${filePath}\`:\n${JSON.stringify(chunk, null, 2)}`
-                }
-              ];
-
+                  const messages = [
+                    {
+                      "role": "system",
+                      "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. 
+                      If the last line in the provided lines appears to have incomplete context and could be resolved by subsequent lines, wait for the next input to confirm. If the issue persists after reviewing the next input, include it in the response.
+                      Rules: ${JSON.stringify(rules, null, 2)}`
+                    },
+                    {
+                      "role": "user",
+                      "content": `
+                      Review the following changes in the filePath \`${filePath}\`:
+                      ${JSON.stringify(chunk, null, 2)}
+                      Respond strictly in the following JSON format:
+                      [
+                        {
+                          "line": <line_number>,
+                          "filePath": "<file_path>",
+                          "issueDescription": "<short_description>",
+                          "whyIssue": "<why_this_is_an_issue>",
+                          "fix": "<code_snippet>"
+                        }
+                      ]
+                      If there are no issues, respond with:
+                      { "status": "pass" }
+                      `
+                    }
+                  ];
               try {
                 const response = await openai.chat.completions.create({
                   model: 'gpt-4',

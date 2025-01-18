@@ -108,7 +108,7 @@ jobs:
               for (const line of addedLines) {
                 const lineTokenEstimate = Math.ceil((line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN);
                 if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {
-                / Log before sending the current chunk
+                // Log before sending the current chunk
                 console.log(`Sending chunk ${chunkIndex} for file ${filePath}...`);
 
                   // Process the current chunk

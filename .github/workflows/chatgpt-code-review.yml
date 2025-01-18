@@ -178,12 +178,12 @@ jobs:
                     "content": `You are an AI reviewing code. Your job is to identify all issues in the provided changes according to the following rules: ${JSON.stringify(rules)}. 
                     - For each line of code, check against all rules and report every rule violation you find.
                     - If multiple rules are violated on the same line, include all of them in the response.
-                    - Always respond with valid JSON in this format:
+                    - Always respond with valid JSON format as described.`
                       },
                   {
                     "role": "user",
                     "content": `
-                    Review the following changes in the filePath \`${filePath}\`:
+                    Review the following changes in the filePath ${filePath}:
                     ${JSON.stringify(chunk, null, 2)}
                     Respond strictly in the following JSON format:
                     [

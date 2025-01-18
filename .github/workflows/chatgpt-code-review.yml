@@ -78,8 +78,8 @@ jobs:
                     try {
                         const blameOutput = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain HEAD -- ${filePath}`).toString().trim();
                         commitHash = blameOutput.split('\n')[0].split(' ')[0];
+                        console.log(`Blame output for line ${lineCounter} in file ${filePath}:\n${blameOutput}`);
                         const originalLineMatch = blameOutput.match(/^\s*\d+\s+(\d+)\s+\d+\s+\d+/m);
-                        console.log(`the originalLineMatch is ${originalLineMatch}, trying to parse it : ${parseInt(originalLineMatch[1], 10)}`);
                         originalLine = originalLineMatch ? parseInt(originalLineMatch[1], 10) : lineCounter; // Use current line if parsing fails
                         console.log(`commit hash is ${commitHash}, line is : ${lineCounter}, original line is ${originalLine}`);
                     } catch (error) {

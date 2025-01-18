@@ -36,7 +36,7 @@ jobs:
     - name: Fetch PR Diff
       id: get_diff
       run: |
-        git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
+        git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.js' '*.ts' '*.sql' > pr_diff.txt > pr_diff.txt
     - name: Generate ChatGPT Feedback
       id: generate_feedback
       env:

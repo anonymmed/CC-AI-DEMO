@@ -67,7 +67,7 @@ jobs:
                 console.log("Completed response received:", event);
                 completedMessages.push(event);
               } else {
-                console.log("Incomplete message received:", event);
+                console.log(`Incoming message received of type ${event.type} and content ${JSON.stringify(event?.item?.content)}`);
               }
             } catch (err) {
               console.error("Error parsing message:", err.message);

@@ -100,12 +100,12 @@ jobs:
             for (const { filePath, addedLines } of changes) {
               let chunk = [];
               let currentTokenCount = 0;
-              for (const line of addedLines) {
+              for (const [index, line] of addedLines.entries()) {
                 const line = addedLines[i];
                 const lineTokenEstimate = Math.ceil((line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN);
                 if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {
                   // Process the current chunk
-                  const isLastLine = i === addedLines.length - 1;
+                  const isLastLine = index === addedLines.length - 1;
                   const messages = [
                     {
                       "role": "system",

@@ -232,8 +232,8 @@ jobs:
 
         const diff = fs.readFileSync('pr_diff.txt', 'utf8');
         const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
-        console.log('Contents of feedbacks.json after writing:', feedbacks);
 
+        // Function to map diff lines
         function getMappedLine(diff, filePath, targetLine) {
           const lines = diff.split('\\n');
           let currentFile = null;
@@ -257,18 +257,24 @@ jobs:
           return null;
         }
 
+        // Process each feedback and add mappedLine
         feedbacks.forEach(feedback => {
-          feedback.addedLines.forEach(line => {
-            const mappedLine = getMappedLine(diff, feedback.filePath, line.lineNumber);
-            console.log(`Mapping: ${line.lineNumber} -> ${mappedLine}`);
-            line.mappedLine = mappedLine;
-          });
+          if (!feedback.filePath || typeof feedback.line !== 'number') {
+            console.warn(`Skipping invalid feedback entry: ${JSON.stringify(feedback)}`);
+            return;
+          }
+
+          const mappedLine = getMappedLine(diff, feedback.filePath, feedback.line);
+          console.log(`Mapping: File=${feedback.filePath}, Original Line=${feedback.line}, Mapped Line=${mappedLine}`);
+          feedback.mappedLine = mappedLine || feedback.line; // Fallback to original line if mapping fails
         });
 
+        // Write updated feedbacks to file
         fs.writeFileSync('feedbacks.json', JSON.stringify(feedbacks, null, 2));
+        console.log('Updated feedbacks.json:', JSON.stringify(feedbacks, null, 2));
         EOF
         node map_diff.js
-        
+  
     - name: Add Commit Hashes to Feedback
       id: add_commit_hashes
       run: |

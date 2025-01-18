@@ -232,6 +232,7 @@ jobs:
 
         const diff = fs.readFileSync('pr_diff.txt', 'utf8');
         const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
+        console.log('Contents of feedbacks.json after writing:', feedbacks);
 
         function getMappedLine(diff, filePath, targetLine) {
           const lines = diff.split('\\n');

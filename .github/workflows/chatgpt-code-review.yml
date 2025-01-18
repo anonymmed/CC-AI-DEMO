@@ -1,10 +1,10 @@
-name: ChatGPT Inline Code Review (Real-Time)
+name: ChatGPT Inline Code Review
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-permissions:
+permissions: 
   contents: write
   pull-requests: write
   repository-projects: write
@@ -23,7 +23,6 @@ jobs:
       run: |
         git fetch origin ${{ github.event.pull_request.head.ref }}
         git checkout ${{ github.event.pull_request.head.ref }}
-
     - name: Cache Node.js Modules
       uses: actions/cache@v3
       with:
@@ -31,124 +30,154 @@ jobs:
         key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
         restore-keys: |
           ${{ runner.os }}-node-
-
     - name: Install Dependencies
-      run: npm install openai @octokit/rest@18.12.0 ws
+      run: npm install openai @octokit/rest@18.12.0 esprima
 
-    - name: Generate ChatGPT Feedback (Real-Time)
+    - name: Fetch PR Diff
+      id: get_diff
+      run: |
+        git diff origin/${{ github.event.pull_request.base.ref }} > pr_diff.txt
+    - name: Generate ChatGPT Feedback
       id: generate_feedback
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
       run: |
         cat <<'EOF' > generate_feedback.js
         const fs = require('fs');
         const { execSync } = require('child_process');
-        const WebSocket = require('ws');
-        const { Octokit } = require('@octokit/rest');
-        const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-        let ws;
-        const completedMessages = [];
+        const { OpenAI } = require('openai');
+        const openai = new OpenAI({
+          apiKey: process.env.OPENAI_API_KEY,
+        });
+        const rulesPath = '.github/rules.json';
+        const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
+        const MAX_TOKENS = 4000;
+        const AVERAGE_LINE_CHARACTERS = 80; // Approximate average line length
+        const CHARACTERS_PER_TOKEN = 4; // Approximate characters per token
+        const RESERVED_TOKENS = 2000; // Reserve for the response
 
-        const connectToRealtimeAPI = () => {
-          ws = new WebSocket("wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview", {
-            headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "OpenAI-Beta": "realtime=v1" },
-          });
-
-          ws.on("open", () => {
-            console.log("Connected to Realtime API.");
-            sendSystemPrompt();
-          });
-
-          ws.on("message", (message) => {
-            try {
-              const event = JSON.parse(message.toString());
-              if (event.type === "response.text.done") {
-                console.log("Completed response received:", event);
-                completedMessages.push(event);
-              } else {
-                console.log(`Incoming message received of type ${event.type} and content ${JSON.stringify(event?.item?.content)}`);
-              }
-            } catch (err) {
-              console.error("Error parsing message:", err.message);
-            }
-          });
-
-          ws.on("close", () => console.log("WebSocket closed."));
-          ws.on("error", (error) => console.error("WebSocket error:", error.message));
-        };
-
-        const sendSystemPrompt = () => {
-          const rulesPath = '.github/workflows/rules.json';
-          const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
-          const systemPrompt = {
-            type: "input_text",
-            text: `You are an AI code reviewer. Use the following rules strictly to identify issues. Respond strictly in JSON format indicated by user prompts. Do not respond until all prompts are sent, indicated by the final input marked with \"last: true\". Include the correct line number and commit hash for each issue. Rules: ${JSON.stringify(rules)}.`,
-          };
-
-          ws.send(
-            JSON.stringify({
-              type: "conversation.item.create",
-              item: { type: "message", role: "system", content: [systemPrompt] },
-            }),
-            () => {
-              console.log("System prompt sent. Starting diff processing...");
-              processDiff();
-            }
-          );
-        };
-
-        const processDiff = () => {
-          console.log("Processing diff...");
-          const diff = execSync(`git diff origin/${process.env.GITHUB_BASE_REF}`).toString();
-          const changes = diff.split('diff --git')
-            .slice(1)
-            .map(change => {
-              const lines = change.split('\n');
-              const filePathMatch = lines[0]?.match(/b\/(\S+)/);
-              const filePath = filePathMatch ? filePathMatch[1] : null;
-
-              if (!filePath || filePath.includes('workflows/')) {
-                return null;
-              }
-
-              const addedLines = [];
-              let lineOffset = 0;
-
-              for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                if (line.startsWith('@@')) {
-                  const hunkHeader = line.match(/\+(\d+)(?:,(\d+))?/);
-                  lineOffset = hunkHeader ? parseInt(hunkHeader[1], 10) : 0;
-                } else if (line.startsWith('+') && !line.startsWith('+++')) {
-                  let commitId = 'unknown';
-                  try {
-                    commitId = execSync(
-                      `git blame -L ${lineOffset},${lineOffset} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`
-                    ).toString().trim();
-                  } catch (error) {
-                    console.error(`Failed to get commit hash for ${filePath} at line ${lineOffset}:`, error.message);
-                  }
-                  addedLines.push({
-                    lineNumber: lineOffset,
-                    lineDiff: line.slice(1),
-                    commitId,
-                  });
-                  lineOffset++;
+        async function generateFeedback() {
+          try {
+            const diff = fs.readFileSync('pr_diff.txt', 'utf8');
+            const changes = diff.split('diff --git')
+              .slice(1)
+              .map(change => {
+                const lines = change.split('\n');
+                const filePathMatch = lines[0]?.match(/b\/(\S+)/);
+                const filePath = filePathMatch ? filePathMatch[1] : null;
+                if (!filePath || filePath.includes('workflows/') || filePath.includes('rules')) {
+                  return null; // Skip invalid or workflow files
                 }
+                const header = lines.find(line => line.startsWith('@@'));
+                const position = header ? parseInt(header.match(/\+([0-9]+)/)?.[1], 10) : null;
+                const addedLines = [];
+                let lineCounter = position || 0;
+                for (const line of lines) {
+                  if (line.startsWith('+') && !line.startsWith('+++')) {
+                    let commitHash;
+                    try {
+                      commitHash = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
+                    } catch (error) {
+                      console.error(`Failed to get commit hash for ${filePath} at line ${lineCounter}:`, error.message);
+                      commitHash = 'unknown';
+                    }
+                    addedLines.push({
+                      lineNumber: lineCounter,
+                      lineDiff: line.slice(1),
+                      commitId: commitHash
+                    });
+                    lineCounter++;
+                  }
+                }
+                if (addedLines.length === 0) {
+                  return null; // Skip invalid changes
+                }
+                return { filePath, addedLines };
+              })
+              .filter(Boolean); // Remove null values
+
+            const feedbacks = [];
+            for (const { filePath, addedLines } of changes) {
+              let chunk = [];
+              let currentTokenCount = 0;
+              for (let i = 0; i < addedLines.length; i++) {
+                const line = addedLines[i];
+                const lineTokenEstimate = Math.ceil((line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN);
+                if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {
+                  // Process the current chunk
+                  const isLastLine = i === addedLines.length - 1;
+                  const messages = [
+                    {
+                      "role": "system",
+                      "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. 
+                      If the last line in the provided lines appears to have incomplete context and could be resolved by subsequent lines, wait for the next input to confirm. If the issue persists after reviewing the next input, include it in the response.`
+                    },
+                    {
+                      "role": "user",
+                      "content": `
+                      Review the following changes in the filePath \`${filePath}\`:
+                      ${JSON.stringify(chunk, null, 2)}
+                      Respond strictly in the following JSON format:
+                      [
+                        {
+                          "line": <line_number>,
+                          "filePath": "<file_path>",
+                          "issueDescription": "<short_description>",
+                          "whyIssue": "<why_this_is_an_issue>",
+                          "fix": "<code_snippet>",
+                          "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
+                        }
+                      ]
+                      If there are no issues, respond with:
+                      { "status": "pass" }
+                      `
+                    }
+                  ];
+                  try {
+                    const response = await openai.chat.completions.create({
+                      model: 'gpt-4',
+                      messages,
+                      max_tokens: RESERVED_TOKENS,
+                      n: 1,
+                    });
+                    const feedbackContent = response.choices[0].message.content;
+                    console.log(`Raw GPT Response:`, feedbackContent);
+                    if (feedbackContent.trim() === '{ "status": "pass" }') {
+                      console.log(`No issues found for ${filePath}`);
+                      continue;
+                    }
+                    try {
+                      const parsedFeedback = JSON.parse(feedbackContent);
+                      parsedFeedback.forEach(item => {
+                        feedbacks.push(item);
+                      });
+                    } catch (jsonError) {
+                      console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
+                    }
+                  } catch (error) {
+                    console.error(`Error processing feedback for ${filePath}:`, error.message);
+                  }
+                  // Reset for the next chunk
+                  chunk = [];
+                  currentTokenCount = 0;
+                }
+                chunk.push(line);
+                currentTokenCount += lineTokenEstimate;
               }
-
-              return { filePath, addedLines };
-            })
-            .filter(Boolean);
-
-          changes.forEach((change, index) => {
-            const isLast = index === changes.length - 1;
-            const userPrompt = {
-              type: "input_text",
-              text: `Review the changes in ${change.filePath}:
-                    ${JSON.stringify(change.addedLines, null, 2)}
-                    Respond in JSON format:
+              // Process any remaining lines in the last chunk
+              if (chunk.length > 0) {
+                const messages = [
+                  {
+                    "role": "system",
+                    "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. 
+                    If the last line in the provided lines appears to have incomplete context and could be resolved by subsequent lines, wait for the next input to confirm. If the issue persists after reviewing the next input, include it in the response.`
+                  },
+                  {
+                    "role": "user",
+                    "content": `
+                    Review the following changes in the filePath \`${filePath}\`:
+                    ${JSON.stringify(chunk, null, 2)}
+                    Respond strictly in the following JSON format:
                     [
                       {
                         "line": <line_number>,
@@ -156,22 +185,103 @@ jobs:
                         "issueDescription": "<short_description>",
                         "whyIssue": "<why_this_is_an_issue>",
                         "fix": "<code_snippet>",
-                        "commitId": "<commit_id>"
+                        "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
                       }
                     ]
-                    If no issues, respond with:
-                    { "status": "pass" }${isLast ? ', "last": true' : ''}`,
-            };
-
-            ws.send(
-              JSON.stringify({
-                type: "conversation.item.create",
-                item: { type: "message", role: isLast ? "system" : "user", content: [userPrompt] },
-              })
-            );
-          });
-        };
-
-        connectToRealtimeAPI();
+                    If there are no issues, respond with:
+                    { "status": "pass" }
+                    `
+                  }
+                ];
+                try {
+                  const response = await openai.chat.completions.create({
+                    model: 'gpt-4',
+                    messages,
+                    max_tokens: RESERVED_TOKENS,
+                    n: 1,
+                  });
+                  const feedbackContent = response.choices[0].message.content;
+                  console.log(`Raw GPT Response:`, feedbackContent);
+                  if (feedbackContent.trim() === '{ "status": "pass" }') {
+                    console.log(`No issues found for ${filePath}`);
+                    continue;
+                  }
+                  try {
+                    const parsedFeedback = JSON.parse(feedbackContent);
+                    parsedFeedback.forEach(item => {
+                      feedbacks.push(item);
+                    });
+                  } catch (jsonError) {
+                    console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
+                  }
+                } catch (error) {
+                  console.error(`Error processing feedback for ${filePath}:`, error.message);
+                }
+              }
+            }
+            fs.writeFileSync('feedbacks.json', JSON.stringify(feedbacks, null, 2));
+          } catch (error) {
+            console.error('Error generating feedback:', error);
+            process.exit(1);
+          }
+        }
+        generateFeedback();
         EOF
         node generate_feedback.js
+    - name: Post Inline Comments
+      env:
+        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+        PR_NUMBER: ${{ github.event.number }}
+      run: |
+        cat <<'EOF' > post_comments.js
+        const fs = require('fs');
+        const { Octokit } = require('@octokit/rest');
+        const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+        async function postComments() {
+          try {
+            const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
+            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+            const pull_number = process.env.PR_NUMBER;
+            // Initialize an array to hold the promises
+            const commentPromises = [];
+        
+            // Loop through feedbacks and create a promise for each comment
+            for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
+              const body = `${issueDescription} | ${whyIssue}  in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
+        
+              console.log(`Preparing comment for ${filePath} at line ${line}, commit ${commitId}`);
+        
+              // Push the promise into the array
+              commentPromises.push(
+                octokit.pulls.createReviewComment({
+                  owner,
+                  repo,
+                  pull_number,
+                  body,
+                  path: filePath,
+                  position: line,
+                  commit_id: commitId,
+                })
+                  .then(() => {
+                    console.log(`Comment posted for ${filePath} at line ${line}`);
+                  })
+                  .catch((err) => {
+                    console.error(`Failed to post comment for ${filePath}:${line}`, err.message);
+                  })
+              );
+            }
+        
+            // Resolve all promises in parallel
+            await Promise.all(commentPromises);
+            console.log(`All ${commentPromises.length} review comments have been posted.`);
+          } catch (error) {
+            console.error('Error during posting comments:', error);
+            process.exit(1);
+          }
+        
+        }
+    
+        postComments();
+        EOF
+    
+        node post_comments.js

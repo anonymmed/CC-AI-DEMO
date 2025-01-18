@@ -175,7 +175,7 @@ jobs:
                 const messages = [
                   {
                     "role": "system",
-                    "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. Provide the correct line number for each issue so the review solution will be displayed correctly next to the issue.`
+                    "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. Provide the correct line number for each issue so the review solution will be displayed correctly next to the issue. always check if multiple rules are being violated and not only one, if multiple rules found violated, they all should be included in the review `
                   },
                   {
                     "role": "user",

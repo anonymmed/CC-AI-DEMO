@@ -55,6 +55,7 @@ jobs:
         const AVERAGE_LINE_CHARACTERS = 80; // Approximate average line length
         const CHARACTERS_PER_TOKEN = 4; // Approximate characters per token
         const RESERVED_TOKENS = 1000; // Reserve for the response
+
         async function generateFeedback() {
           try {
             const diff = fs.readFileSync('pr_diff.txt', 'utf8');
@@ -75,7 +76,7 @@ jobs:
                   if (line.startsWith('+') && !line.startsWith('+++')) {
                     let commitHash;
                     try {
-                      commitHash = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
+                      commitHash = execSync(`git blame -L ${lineCounter},${lineCounter} --line-porcelain HEAD -- ${filePath} | head -n 1 | awk '{print $1}'`).toString().trim();
                     } catch (error) {
                       console.error(`Failed to get commit hash for ${filePath} at line ${lineCounter}:`, error.message);
                       commitHash = 'unknown';
@@ -94,18 +95,23 @@ jobs:
                 return { filePath, addedLines };
               })
               .filter(Boolean); // Remove null values
+
             const feedbacks = [];
             for (const { filePath, addedLines } of changes) {
               let chunk = [];
               let currentTokenCount = 0;
-              for (const line of addedLines) {
+              for (let i = 0; i < addedLines.length; i++) {
+                const line = addedLines[i];
                 const lineTokenEstimate = Math.ceil((line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN);
                 if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {
                   // Process the current chunk
+                  const isLastLine = i === addedLines.length - 1;
                   const messages = [
                     {
                       "role": "system",
-                      "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. Provide the correct line number for each issue so the review solution will be displayed correctly next to the issue.`
+                      "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. 
+                      If the last line in the provided lines appears to have incomplete context and could be resolved by subsequent lines, wait for the next input to confirm. If the issue persists after reviewing the next input, include it in the response.
+                      rules: ${JSON.stringify(rules, null, 2)}`
                     },
                     {
                       "role": "user",
@@ -139,12 +145,14 @@ jobs:
                     console.log(`Raw GPT Response:`, feedbackContent);
                     if (feedbackContent.trim() === '{ "status": "pass" }') {
                       console.log(`No issues found for ${filePath}`);
+                      chunk = [];
+                      currentTokenCount = 0;
                       continue;
-                    }
+                      }
                     try {
                       const parsedFeedback = JSON.parse(feedbackContent);
                       parsedFeedback.forEach(item => {
-                        feedbacks.push(item); // Include commitId from chunk
+                        feedbacks.push(item);
                       });
                     } catch (jsonError) {
                       console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
@@ -164,7 +172,8 @@ jobs:
                 const messages = [
                   {
                     "role": "system",
-                    "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. Provide the correct line number for each issue so the review solution will be displayed correctly next to the issue.`
+                    "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. 
+                    If the last line in the provided lines appears to have incomplete context and could be resolved by subsequent lines, wait for the next input to confirm. If the issue persists after reviewing the next input, include it in the response.`
                   },
                   {
                     "role": "user",
@@ -179,7 +188,7 @@ jobs:
                         "issueDescription": "<short_description>",
                         "whyIssue": "<why_this_is_an_issue>",
                         "fix": "<code_snippet>",
-                          "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
+                        "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
                       }
                     ]
                     If there are no issues, respond with:
@@ -194,6 +203,7 @@ jobs:
                     max_tokens: RESERVED_TOKENS,
                     n: 1,
                   });
+                  console.log(`Sending messages : ${JSON.stringify(chunk, null, 2)}`);
                   const feedbackContent = response.choices[0].message.content;
                   console.log(`Raw GPT Response:`, feedbackContent);
                   if (feedbackContent.trim() === '{ "status": "pass" }') {
@@ -203,7 +213,7 @@ jobs:
                   try {
                     const parsedFeedback = JSON.parse(feedbackContent);
                     parsedFeedback.forEach(item => {
-                      feedbacks.push(item); // Include commitId from chunk
+                      feedbacks.push(item);
                     });
                   } catch (jsonError) {
                     console.error(`Invalid JSON response for ${filePath}:`, feedbackContent, jsonError.message);
@@ -236,18 +246,11 @@ jobs:
             const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const pull_number = process.env.PR_NUMBER;
-            // Initialize an array to hold the promises
-            const commentPromises = [];
-        
-            // Loop through feedbacks and create a promise for each comment
             for (const { filePath, line, commitId, issueDescription, whyIssue, fix } of feedbacks) {
               const body = `${issueDescription} | ${whyIssue}  in line ${line} ${fix.length > 0 ? '\n```csharp \n' + fix + '\n ```' : ''}`;
-        
-              console.log(`Preparing comment for ${filePath} at line ${line}, commit ${commitId}`);
-        
-              // Push the promise into the array
-              commentPromises.push(
-                octokit.pulls.createReviewComment({
+              console.log(`Posting comment for ${filePath} at line ${line}, commit ${commitId}`);
+              try {
+                await octokit.pulls.createReviewComment({
                   owner,
                   repo,
                   pull_number,
@@ -255,27 +258,18 @@ jobs:
                   path: filePath,
                   position: line,
                   commit_id: commitId,
-                })
-                  .then(() => {
-                    console.log(`Comment posted for ${filePath} at line ${line}`);
-                  })
-                  .catch((err) => {
-                    console.error(`Failed to post comment for ${filePath}:${line}`, err.message);
-                  })
-              );
+                });
+                console.log(`Comment posted for ${filePath} at line ${line}`);
+              } catch (err) {
+                console.error(`Failed to post comment for ${filePath}:${line}`, err.message);
+              }
             }
-        
-            // Resolve all promises in parallel
-            await Promise.all(commentPromises);
-            console.log(`All ${commentPromises.length} review comments have been posted.`);
+            console.log(`All comments have been posted.`);
           } catch (error) {
             console.error('Error during posting comments:', error);
             process.exit(1);
           }
-        
         }
-    
         postComments();
         EOF
-    
         node post_comments.js

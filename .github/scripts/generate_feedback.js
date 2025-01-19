@@ -6,14 +6,14 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 const rulesPath = ".github/rules/rules.json";
-const rulesData = await fs.readFile(rulesPath, "utf8");
-const rules = JSON.parse(rulesData);
 const MAX_TOKENS = 4000;
 const AVERAGE_LINE_CHARACTERS = 80; // Approximate average line length
 const CHARACTERS_PER_TOKEN = 4; // Approximate characters per token
 const RESERVED_TOKENS = 2000; // Reserve for the response
 async function generateFeedback() {
   try {
+    const rulesData = await fs.readFile(rulesPath, "utf8");
+    const rules = JSON.parse(rulesData);
     const diff = await fs.readFile("pr_diff.txt", "utf8");
     const changes = diff
       .split("diff --git")

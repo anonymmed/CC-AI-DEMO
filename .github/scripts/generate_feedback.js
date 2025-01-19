@@ -239,6 +239,7 @@ const fs = require("fs");
 const { execSync } = require("child_process");
 const { OpenAI } = require("openai");
 
+const rulesPath = ".github/rules/rules.json";
 const rulesData = fs.readFileSync(rulesPath, "utf8");
 const rules = JSON.parse(rulesData);
 
@@ -271,7 +272,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const rulesPath = ".github/rules/rules.json";
 const MAX_TOKENS = 8000;
 const AVERAGE_LINE_CHARACTERS = 80;
 const CHARACTERS_PER_TOKEN = 4;

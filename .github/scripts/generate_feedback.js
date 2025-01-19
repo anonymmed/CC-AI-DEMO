@@ -108,6 +108,7 @@ async function generateFeedback() {
               content: `You are an AI reviewing code. Your job is to identify all issues in the provided changes according to the following rules: ${JSON.stringify(rules)}. 
               - For each line of code, check against all rules and report every rule violation you find.
               - If multiple rules are violated on the same line, include all of them in the response.
+              - All strings in JSON fix field that include double quotes inside strings must be properly escaped as \\".
               - Always respond with valid JSON format as described.`,
             },
             {

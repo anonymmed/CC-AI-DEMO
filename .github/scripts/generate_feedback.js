@@ -136,7 +136,6 @@ async function generateFeedback() {
               n: 1,
             });
             const feedbackContent = response.choices[0].message.content;
-            console.log(`Raw GPT Response:`, feedbackContent);
             if (feedbackContent.trim() === '{ "status": "pass" }') {
               console.log(`No issues found for ${filePath}`);
               continue;
@@ -229,6 +228,8 @@ async function generateFeedback() {
         }
       }
     }
+    console.log(`Escaped Raw GPT Response:`, feedbackContent);
+
     await fs.writeFile('feedbacks.json', JSON.stringify(feedbacks, null, 2), 'utf8');
     console.log('Feedbacks written to feedbacks.json');
     process.exit(0);

@@ -23,6 +23,7 @@ jobs:
       run: |
         git fetch origin ${{ github.event.pull_request.head.ref }}
         git checkout ${{ github.event.pull_request.head.ref }}
+
     - name: Cache Node.js Modules
       uses: actions/cache@v3
       with:
@@ -30,6 +31,7 @@ jobs:
         key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
         restore-keys: |
           ${{ runner.os }}-node-
+
     - name: Install Dependencies
       run: npm install openai @octokit/rest@18.12.0 esprima
 
@@ -37,6 +39,7 @@ jobs:
       id: get_diff
       run: |
         git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.ts' '*.js' '*.sql' > pr_diff.txt
+
     - name: Generate ChatGPT Feedback
       id: generate_feedback
       env:

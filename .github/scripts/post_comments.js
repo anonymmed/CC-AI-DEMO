@@ -1,16 +1,12 @@
-console.log('Post Comments script started');
-const fs = require("fs");
+console.log("Post Comments script started");
+const fs = require("fs").promises;
 const { Octokit } = require("@octokit/rest");
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 async function postComments() {
   try {
-// Ensure the file exists before reading
-if (!fs.existsSync("feedbacks.json")) {
-    console.error(`Error: Feedback file not found at ${feedbacks.json}`);
-    process.exit(1);
-  }
-  
-    const feedbacks = JSON.parse(fs.readFileSync("feedbacks.json", "utf8"));
+    
+    const feedbacksData = await fs.readFile("feedbacks.json", "utf8");
+    const feedbacks = JSON.parse(feedbacksData);
     console.log("feedback written in file is :", feedbacks);
     const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
     const pull_number = process.env.PR_NUMBER;

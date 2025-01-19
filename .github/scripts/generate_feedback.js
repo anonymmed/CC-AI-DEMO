@@ -1,5 +1,5 @@
 console.log('Generate Feedback script started');
-const fs = require("fs");
+const fs = require('fs').promises;
 const { execSync } = require("child_process");
 const { OpenAI } = require("openai");
 const openai = new OpenAI({
@@ -13,7 +13,7 @@ const CHARACTERS_PER_TOKEN = 4; // Approximate characters per token
 const RESERVED_TOKENS = 2000; // Reserve for the response
 async function generateFeedback() {
   try {
-    const diff = fs.readFileSync("pr_diff.txt", "utf8");
+    const diff = await fs.readFile("pr_diff.txt", "utf8");
     const changes = diff
       .split("diff --git")
       .slice(1)
@@ -231,7 +231,9 @@ async function generateFeedback() {
         }
       }
     }
-    fs.writeFileSync("feedbacks.json", JSON.stringify(feedbacks, null, 2));
+    await fs.writeFile('feedbacks.json', JSON.stringify(feedbacks, null, 2), 'utf8');
+    console.log('Feedbacks written to feedbacks.json');
+    process.exit(0);
   } catch (error) {
     console.error("Error generating feedback:", error);
     process.exit(1);

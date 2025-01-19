@@ -6,7 +6,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 const rulesPath = ".github/rules/rules.json";
-const rules = JSON.parse(fs.readFileSync(rulesPath, "utf8"));
+const rulesData = await fs.readFile(rulesPath, "utf8");
+const rules = JSON.parse(rulesData);
 const MAX_TOKENS = 4000;
 const AVERAGE_LINE_CHARACTERS = 80; // Approximate average line length
 const CHARACTERS_PER_TOKEN = 4; // Approximate characters per token

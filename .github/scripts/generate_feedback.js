@@ -24,7 +24,8 @@ async function generateFeedback() {
         if (
           !filePath ||
           filePath.includes("workflows/") ||
-          filePath.includes("rules")
+          filePath.includes("rules/") ||
+          filePath.includes("scripts/") 
         ) {
           return null; // Skip invalid or workflow files
         }

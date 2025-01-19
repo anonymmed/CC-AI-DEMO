@@ -4,6 +4,12 @@ const { Octokit } = require("@octokit/rest");
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 async function postComments() {
   try {
+// Ensure the file exists before reading
+if (!fs.existsSync(feedbacks.json)) {
+    console.error(`Error: Feedback file not found at ${feedbacks.json}`);
+    process.exit(1);
+  }
+  
     const feedbacks = JSON.parse(fs.readFileSync("feedbacks.json", "utf8"));
     console.log("feedback written in file is :", feedbacks);
     const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");

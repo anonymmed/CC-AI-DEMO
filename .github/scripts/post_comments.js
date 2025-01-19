@@ -5,7 +5,7 @@ const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 async function postComments() {
   try {
 // Ensure the file exists before reading
-if (!fs.existsSync(feedbacks.json)) {
+if (!fs.existsSync("feedbacks.json")) {
     console.error(`Error: Feedback file not found at ${feedbacks.json}`);
     process.exit(1);
   }

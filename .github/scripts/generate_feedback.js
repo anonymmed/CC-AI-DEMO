@@ -1,4 +1,4 @@
-console.log('Generate Feedback script started');
+/*console.log('Generate Feedback script started');
 const fs = require('fs').promises;
 const { execSync } = require("child_process");
 const { OpenAI } = require("openai");
@@ -231,4 +231,200 @@ async function generateFeedback() {
     process.exit(1);
   }
 }
+generateFeedback();
+*/
+console.log("Generate Feedback script started");
+
+const fs = require("fs").promises;
+const { execSync } = require("child_process");
+const { OpenAI } = require("openai");
+
+const rulesData = await fs.readFile(rulesPath, "utf8");
+const rules = JSON.parse(rulesData);
+
+const assistantInstruction = `You are an AI code reviewer. Your task is to evaluate the provided code changes against a set of given rules.
+For each code snippet:
+1. Review the code against **each rule** individually.
+2. Report **every violation** you find in a separate JSON object.
+3. If multiple rules are violated in the same code snippet, create separate JSON objects for each violation.
+4. Include fixes for each issue in the JSON response, specific to the violation being addressed.
+5. always look at the line before and after to understand if an issue is happening or not.
+### Rules for Review:
+${JSON.stringify(rules)}
+### Respond in This JSON Format:
+[
+  {
+    "line": <line_number>,
+    "issuesDescription": "<short_description_about_the_violation>",
+    "fix": "<code_snippet_to_fix_the_violation>"
+  }
+]
+
+### Key Instructions:
+- Process each rule individually and systematically.
+- For each violation, create a separate JSON object.
+- If multiple rules are violated in the same snippet, include one object per rule.
+- Ensure the JSON is valid and properly escaped.
+- If no violations are found, respond with: { "status": "pass" }.
+`;
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+const rulesPath = ".github/rules/rules.json";
+const MAX_TOKENS = 8000;
+const AVERAGE_LINE_CHARACTERS = 80;
+const CHARACTERS_PER_TOKEN = 4;
+const RESERVED_TOKENS = 1000;
+
+async function generateFeedback() {
+  try {
+    // Load rules and diff
+    const diff = await fs.readFile("pr_diff.txt", "utf8");
+
+    // Step 1: Create an Assistant for this PR
+    const assistant = await openai.beta.assistants.create({
+      name: `PR Review Assistant`,
+      instructions: assistantInstruction,
+      tools: [{ type: "code_interpreter" }],
+      model: "gpt-4o",
+    });
+
+    console.log(`Assistant created: ${assistant.id}`);
+
+    // Step 2: Create a Thread for this PR
+    const thread = await openai.beta.threads.create();
+    console.log(`Thread created: ${thread.id}`);
+
+    // Step 3: Process changes and create Messages
+    const changes = diff
+      .split("diff --git")
+      .slice(1)
+      .map((change) => {
+        const lines = change.split("\n");
+        const filePathMatch = lines[0]?.match(/b\/(\S+)/);
+        const filePath = filePathMatch ? filePathMatch[1] : null;
+
+        if (
+          !filePath ||
+          filePath.includes("workflows/") ||
+          filePath.includes("rules/") ||
+          filePath.includes("scripts/")
+        ) {
+          return null; // Skip invalid files
+        }
+
+        const header = lines.find((line) => line.startsWith("@@"));
+        const position = header
+          ? parseInt(header.match(/\+([0-9]+)/)?.[1], 10)
+          : null;
+
+        const addedLines = [];
+        let lineCounter = position || 0;
+
+        for (const line of lines) {
+          if (line.startsWith("+") && !line.startsWith("+++")) {
+            let commitHash;
+            try {
+              const blameOutput = execSync(
+                `git blame -L ${lineCounter},${lineCounter} --line-porcelain HEAD -- ${filePath}`
+              )
+                .toString()
+                .trim();
+
+              commitHash = blameOutput.split("\n")[0].split(" ")[0];
+            } catch {
+              commitHash = "unknown";
+            }
+            addedLines.push({
+              lineNumber: lineCounter,
+              lineDiff: line.slice(1),
+              commitId: commitHash,
+            });
+            lineCounter++;
+          }
+        }
+
+        return addedLines.length ? { filePath, addedLines } : null;
+      })
+      .filter(Boolean);
+
+    // Step 4: Add Messages for each chunk
+    let chunkIndex = 1;
+    for (const { filePath, addedLines } of changes) {
+      let chunk = [];
+      let currentTokenCount = 0;
+
+      for (const line of addedLines) {
+        const lineTokenEstimate = Math.ceil(
+          (line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN
+        );
+
+        if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {
+          console.log(`Adding chunk ${chunkIndex} for file ${filePath}...`);
+          await openai.beta.threads.messages.create(thread.id, {
+            role: "user",
+            content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
+              chunk,
+              null,
+              2
+            )}`,
+          });
+
+          chunk = [];
+          currentTokenCount = 0;
+          chunkIndex++;
+        }
+
+        chunk.push(line);
+        currentTokenCount += lineTokenEstimate;
+      }
+      let lastMessage;
+      if (chunk.length > 0) {
+        console.log(`Adding final chunk ${chunkIndex} for file ${filePath}...`);
+        lastMessage = await openai.beta.threads.messages.create(thread.id, {
+          role: "user",
+          content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
+            chunk,
+            null,
+            2
+          )}`,
+        });
+      }
+    }
+    if(!lastMessage) {
+        console.error("No messages were created. Exiting...");
+        process.exit(1);
+    }
+    const lastMessageIdBeforeRun = lastMessage.id;
+    // Step 5: Create a Run
+    console.log(`Creating run for thread ${thread.id}...`);
+    const run = await openai.beta.threads.runs.createAndPoll(thread.id, {
+      assistant_id: assistant.id,
+    });
+
+    if (!run || run.status !== "completed") {
+      console.error(`Run failed with status: ${run.status}`);
+      process.exit(1);
+    }
+
+    // Step 6: Retrieve and save feedback
+    const assistantMessages = await openai.beta.threads.messages.list(thread.id, {
+        order: "desc", // Ensure messages are retrieved in chronological order
+        before: lastMessageIdBeforeRun, // Only retrieve messages after the last user message
+      });
+
+    const feedbacks = assistantMessages.data
+      .filter((message) => message.role === "assistant")
+      .map((message) => message.content[0].text.value);
+
+      console.log("GPT assistant feedbacks:", feedbacks);
+    await fs.writeFile("feedbacks.json", JSON.stringify(feedbacks, null, 2), "utf8");
+    console.log("Feedbacks written to feedbacks.json");
+  } catch (error) {
+    console.error("Error generating feedback:", error);
+    process.exit(1);
+  }
+}
+
 generateFeedback();

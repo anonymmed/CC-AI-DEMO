@@ -10,9 +10,6 @@ const MAX_TOKENS = 4000;
 const AVERAGE_LINE_CHARACTERS = 80; // Approximate average line length
 const CHARACTERS_PER_TOKEN = 4; // Approximate characters per token
 const RESERVED_TOKENS = 2000; // Reserve for the response
-const escapeJsonString = (str) =>
-    str.replace(/\\/g, '\\\\') // Escape backslashes
-       .replace(/"/g, '\\"');  // Escape double quotes
   
 async function generateFeedback() {
   try {
@@ -141,7 +138,6 @@ async function generateFeedback() {
             try {
               const parsedFeedback = JSON.parse(feedbackContent);
               parsedFeedback.forEach((item) => {
-                item.fix = escapeJsonString(item.fix);
                 feedbacks.push(item); // Include commitId from chunk
               });
             } catch (jsonError) {

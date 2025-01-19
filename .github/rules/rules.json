@@ -80,8 +80,8 @@
     "example": "var result = await SomeAsyncMethod();"
   },
   {
-    "rule": "Use readonly for Immutable Fields",
-    "description": "Mark fields that don't change after initialization as readonly.",
+    "rule": "Use readonly for Immutable Class-Level Fields",
+    "description": "Mark fields declared at the class level that don't change after initialization as readonly.",
     "example": "private readonly int value;"
   },
   {

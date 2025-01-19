@@ -115,8 +115,11 @@ jobs:
                   const messages = [
                     {
                       "role": "system",
-                      "content": `You are an AI reviewing code. Always respond in valid JSON format as described. Use the provided rules strictly to identify issues. Rules: ${JSON.stringify(rules)}. Provide the correct line number for each issue so the review solution will be displayed correctly next to the issue.`
-                    },
+                      "content": `You are an AI reviewing code. Your job is to identify all issues in the provided changes according to the following rules: ${JSON.stringify(rules)}. 
+                      - For each line of code, check against all rules and report every rule violation you find.
+                      - If multiple rules are violated on the same line, include all of them in the response.
+                      - Always respond with valid JSON format as described.`
+                        },
                     {
                       "role": "user",
                       "content": `
@@ -246,6 +249,7 @@ jobs:
         async function postComments() {
           try {
             const feedbacks = JSON.parse(fs.readFileSync('feedbacks.json', 'utf8'));
+            console.log('feedback written in file is :', feedbacks);
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const pull_number = process.env.PR_NUMBER;
 

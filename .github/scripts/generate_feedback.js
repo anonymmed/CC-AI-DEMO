@@ -351,6 +351,7 @@ async function generateFeedback() {
 
     // Step 4: Add Messages for each chunk
     let chunkIndex = 1;
+    let lastMessage;
     for (const { filePath, addedLines } of changes) {
       let chunk = [];
       let currentTokenCount = 0;
@@ -362,7 +363,7 @@ async function generateFeedback() {
 
         if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {
           console.log(`Adding chunk ${chunkIndex} for file ${filePath}...`);
-          await openai.beta.threads.messages.create(thread.id, {
+          lastMessage = await openai.beta.threads.messages.create(thread.id, {
             role: "user",
             content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
               chunk,
@@ -379,7 +380,6 @@ async function generateFeedback() {
         chunk.push(line);
         currentTokenCount += lineTokenEstimate;
       }
-      let lastMessage;
       if (chunk.length > 0) {
         console.log(`Adding final chunk ${chunkIndex} for file ${filePath}...`);
         lastMessage = await openai.beta.threads.messages.create(thread.id, {

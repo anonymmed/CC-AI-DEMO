@@ -235,11 +235,11 @@ generateFeedback();
 */
 console.log("Generate Feedback script started");
 
-const fs = require("fs").promises;
+const fs = require("fs");
 const { execSync } = require("child_process");
 const { OpenAI } = require("openai");
 
-const rulesData = await fs.readFile(rulesPath, "utf8");
+const rulesData = fs.readFileSync(rulesPath, "utf8");
 const rules = JSON.parse(rulesData);
 
 const assistantInstruction = `You are an AI code reviewer. Your task is to evaluate the provided code changes against a set of given rules.
@@ -280,7 +280,7 @@ const RESERVED_TOKENS = 1000;
 async function generateFeedback() {
   try {
     // Load rules and diff
-    const diff = await fs.readFile("pr_diff.txt", "utf8");
+    const diff = await fs.promises.readFile("pr_diff.txt", "utf8");
 
     // Step 1: Create an Assistant for this PR
     const assistant = await openai.beta.assistants.create({
@@ -419,7 +419,7 @@ async function generateFeedback() {
       .map((message) => message.content[0].text.value);
 
       console.log("GPT assistant feedbacks:", feedbacks);
-    await fs.writeFile("feedbacks.json", JSON.stringify(feedbacks, null, 2), "utf8");
+    await fs.promises.writeFile("feedbacks.json", JSON.stringify(feedbacks, null, 2), "utf8");
     console.log("Feedbacks written to feedbacks.json");
   } catch (error) {
     console.error("Error generating feedback:", error);

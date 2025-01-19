@@ -123,7 +123,7 @@ jobs:
                     {
                       "role": "user",
                       "content": `
-                      Review the following changes in the filePath \`${filePath}\`:
+                      Review the following changes in the filePath ${filePath}:
                       ${JSON.stringify(chunk, null, 2)}
                       Respond strictly in the following JSON format:
                       [

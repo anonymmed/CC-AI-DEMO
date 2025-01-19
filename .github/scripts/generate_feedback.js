@@ -228,7 +228,7 @@ async function generateFeedback() {
         }
       }
     }
-    console.log(`Escaped Raw GPT Response:`, feedbackContent);
+    console.log(`Escaped Raw GPT Response:`, feedbacks);
 
     await fs.writeFile('feedbacks.json', JSON.stringify(feedbacks, null, 2), 'utf8');
     console.log('Feedbacks written to feedbacks.json');

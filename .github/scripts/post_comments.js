@@ -4,7 +4,7 @@ const { Octokit } = require("@octokit/rest");
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 async function postComments() {
   try {
-    
+
     const feedbacksData = await fs.readFile("feedbacks.json", "utf8");
     const feedbacks = JSON.parse(feedbacksData);
     console.log("feedback written in file is :", feedbacks);
@@ -21,10 +21,6 @@ async function postComments() {
       const body = `${issueDescription} \n  in line ${line} ${
         fix.length > 0 ? "\n```csharp \n" + fix + "\n ```" : ""
       }`;
-
-      console.log(
-        `Preparing comment for ${filePath} at line ${line}, commit ${commitId}`
-      );
 
       try {
         await octokit.pulls.createReviewComment({

@@ -58,10 +58,7 @@ async function generateFeedback() {
                 ? parseInt(originalLineMatch, 10)
                 : lineCounter; // Fallback to current line
               console.log(
-                "parsedOriginalLine: ${parseInt(originalLineMatch, 10)}"
-              );
-              console.log(
-                `commit hash is ${commitHash}, line is : ${lineCounter}, original line is ${originalLine}`
+                `line : ${lineCounter}, original line is ${originalLine}`
               );
             } catch (error) {
               console.error(
@@ -138,7 +135,7 @@ async function generateFeedback() {
             });
             const feedbackContent = response.choices[0].message.content;
             if (feedbackContent.trim() === '{ "status": "pass" }') {
-              console.log(`No issues found for ${filePath}`);
+              console.log(`No issues found for ${filePath} chunk : ${chunk}`);
               continue;
             }
             try {
@@ -176,6 +173,7 @@ async function generateFeedback() {
             content: `You are an AI reviewing code. Your job is to identify all issues in the provided changes according to the following rules: ${JSON.stringify(rules)}. 
             - For each line of code, check against all rules and report every rule violation you find.
             - If multiple rules are violated on the same line, include all of them in the response.
+            - All strings in JSON fix field that include double quotes inside strings must be properly escaped as \\".
             - Always respond with valid JSON format as described.`,
           },
           {
@@ -206,7 +204,7 @@ async function generateFeedback() {
           const feedbackContent = response.choices[0].message.content;
           console.log(`Raw GPT Response:`, feedbackContent);
           if (feedbackContent.trim() === '{ "status": "pass" }') {
-            console.log(`No issues found for ${filePath}`);
+            console.log(`No issues found for ${filePath} chunk : ${chunk}`);
             continue;
           }
           try {
@@ -229,8 +227,6 @@ async function generateFeedback() {
         }
       }
     }
-    console.log(`Escaped Raw GPT Response:`, feedbacks);
-
     await fs.writeFile('feedbacks.json', JSON.stringify(feedbacks, null, 2), 'utf8');
     console.log('Feedbacks written to feedbacks.json');
     process.exit(0);

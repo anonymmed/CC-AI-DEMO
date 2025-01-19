@@ -1,13 +1,13 @@
 [
   {
     "rule": "Function Documentation and Summary Format",
-    "description": "All functions must include a summary comment or inheritdoc. The summary must describe the function's purpose, include all parameters with their descriptions, and specify the return type, if applicable. All documentation must follow proper formatting and be in English without any typos.",
+    "description": "All functions must include a summary comment or inheritdoc documenting them. The summary must describe the function's purpose, include all parameters with their descriptions, and specify the return type, if applicable. All documentation must follow proper formatting and be in English without any typos.",
     "example": "/// <summary>\n/// Calculates the sum of two numbers.\n/// </summary>\n/// <param name=\"a\">The first number.</param>\n/// <param name=\"b\">The second number.</param>\n/// <returns>The sum of the numbers.</returns>"
   },
   {
     "rule": "Maintain Empty Lines Between Functions",
     "description": "All methods in a class must have a single blank line separating them to improve readability and maintain a consistent structure.",
-    "example": "public void Method1() { }\n\npublic void Method2() { }"
+    "example": "public void Method1() { } \n\n public void Method2() { }"
   },
   {
     "rule": "SQL Query Best Practices",
@@ -72,7 +72,7 @@
   {
     "rule": "Use nameof for Parameter Validation",
     "description": "Use the nameof operator instead of hardcoded strings for parameter validation.",
-    "example": "if (value == null) throw new ArgumentNullException(nameof(value));"
+    "example": "if (value == null) throw new Exception(nameof(value));"
   },
   {
     "rule": "Avoid Blocking Calls on Tasks",

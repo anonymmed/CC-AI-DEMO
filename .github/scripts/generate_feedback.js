@@ -10,6 +10,10 @@ const MAX_TOKENS = 4000;
 const AVERAGE_LINE_CHARACTERS = 80; // Approximate average line length
 const CHARACTERS_PER_TOKEN = 4; // Approximate characters per token
 const RESERVED_TOKENS = 2000; // Reserve for the response
+const escapeJsonString = (str) =>
+    str.replace(/\\/g, '\\\\') // Escape backslashes
+       .replace(/"/g, '\\"');  // Escape double quotes
+  
 async function generateFeedback() {
   try {
     const rulesData = await fs.readFile(rulesPath, "utf8");
@@ -101,9 +105,7 @@ async function generateFeedback() {
           const messages = [
             {
               role: "system",
-              content: `You are an AI reviewing code. Your job is to identify all issues in the provided changes according to the following rules: ${JSON.stringify(
-                rules
-              )}. 
+              content: `You are an AI reviewing code. Your job is to identify all issues in the provided changes according to the following rules: ${JSON.stringify(rules)}. 
               - For each line of code, check against all rules and report every rule violation you find.
               - If multiple rules are violated on the same line, include all of them in the response.
               - Always respond with valid JSON format as described.`,
@@ -111,7 +113,7 @@ async function generateFeedback() {
             {
               role: "user",
               content: `
-              Review the following changes in the filePath ${filePath}:
+              Review the following changes in the filePath ${filePath}: 
               ${JSON.stringify(chunk, null, 2)}
               Respond strictly in the following JSON format:
               [
@@ -123,9 +125,7 @@ async function generateFeedback() {
                   "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
                 }
               ]
-              If there are no issues, respond with:
-              { "status": "pass" }
-              `,
+              If there are no issues, respond with: { "status": "pass" }`,
             },
           ];
           try {
@@ -144,6 +144,7 @@ async function generateFeedback() {
             try {
               const parsedFeedback = JSON.parse(feedbackContent);
               parsedFeedback.forEach((item) => {
+                item.fix = escapeJsonString(item.fix);
                 feedbacks.push(item); // Include commitId from chunk
               });
             } catch (jsonError) {
@@ -172,9 +173,7 @@ async function generateFeedback() {
         const messages = [
           {
             role: "system",
-            content: `You are an AI reviewing code. Your job is to identify all issues in the provided changes according to the following rules: ${JSON.stringify(
-              rules
-            )}. 
+            content: `You are an AI reviewing code. Your job is to identify all issues in the provided changes according to the following rules: ${JSON.stringify(rules)}. 
             - For each line of code, check against all rules and report every rule violation you find.
             - If multiple rules are violated on the same line, include all of them in the response.
             - Always respond with valid JSON format as described.`,
@@ -194,9 +193,7 @@ async function generateFeedback() {
                 "commitId": "<commit_id_specific_to_the_line_that_have_issue>"
               }
             ]
-            If there are no issues, respond with:
-            { "status": "pass" }
-            `,
+            If there are no issues, respond with: { "status": "pass" }`,
           },
         ];
         try {

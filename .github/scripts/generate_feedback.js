@@ -449,9 +449,20 @@ async function generateFeedback() {
       }
     );
 
-    const feedbacks = assistantMessages.data
-      .filter((message) => message.role === "assistant")
-      .map((message) => sanitizeJsonString(message.content[0].text.value));
+// Sanitize and parse each assistant message
+const feedbacks = assistantMessages.data
+  .filter((message) => message.role === "assistant")
+  .map((message) => {
+    try {
+      // Sanitize and parse each message content
+      const sanitizedMessage = sanitizeJsonString(message.content[0].text.value);
+      return JSON.parse(sanitizedMessage); // Parse into JSON object
+    } catch (error) {
+      console.error("Error parsing assistant message content:", error.message);
+      return null; // Skip invalid messages
+    }
+  })
+  .filter(Boolean); // Remove null values
 
     console.log("GPT assistant sanitized feedbacks:", feedbacks);
     await fs.promises.writeFile(

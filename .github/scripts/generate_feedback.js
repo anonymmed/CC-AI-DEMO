@@ -354,22 +354,9 @@ async function generateFeedback() {
 
         for (const line of lines) {
           if (line.startsWith("+") && !line.startsWith("+++")) {
-            let commitHash;
-            try {
-              const blameOutput = execSync(
-                `git blame -L ${lineCounter},${lineCounter} --line-porcelain HEAD -- ${filePath}`
-              )
-                .toString()
-                .trim();
-
-              commitHash = blameOutput.split("\n")[0].split(" ")[0];
-            } catch {
-              commitHash = "unknown";
-            }
             addedLines.push({
               lineNumber: lineCounter,
               lineDiff: line.slice(1),
-              commitId: commitHash,
             });
             lineCounter++;
           }
@@ -480,12 +467,14 @@ async function generateFeedback() {
         )
           .toString()
           .trim();
-        const commitHash = blameOutput.split("\n")[0].split(" ")[0]; // First field is the commit hash
-        const originalLineMatch = blameOutput.match(/^\s*\d+\s+(\d+)/m);
+        const commitHash = blameOutput.split("\n")[0].split(" ")[0];
+        const originalLineMatch = blameOutput.split("\n")[0].split(" ")[1];
+
         const originalLine = originalLineMatch
           ? parseInt(originalLineMatch[1], 10)
           : feedback.line;
 
+        console.log(`line : ${feedback.line} mapped to the original line ${originalLine}`);
         return { ...feedback, line: originalLine, commitId: commitHash }; // Update with line and commit hash
       } catch (error) {
         console.error(

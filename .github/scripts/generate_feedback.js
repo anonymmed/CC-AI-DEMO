@@ -325,7 +325,11 @@ async function generateFeedback() {
     
     const cache = await loadCache();
     console.log("Loaded cache:", cache);
-  
+    // Initialize or retrieve assistant and thread
+    if (!cache[prId]) {
+      cache[prId] = { assistantId: null, threadId: null, reviewedCommits: [] };
+    }
+
     let assistantId = cache[prId]?.assistantId;
     let threadId = cache[prId]?.threadId;
     if(!assistantId) {

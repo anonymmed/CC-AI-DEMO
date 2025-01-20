@@ -19,19 +19,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # Step 1: Checkout code
     - name: Checkout code
       uses: actions/checkout@v3
       with:
         fetch-depth: 0  # Fetch all history for accurate git blame
 
-    # Step 3: Fetch PR Branch
     - name: Fetch PR Branch
       run: |
         git fetch origin ${{ github.event.pull_request.head.ref }}
         git checkout ${{ github.event.pull_request.head.ref }}
 
-    # Step 4: Cache Node.js Modules
     - name: Cache Node.js Modules
       uses: actions/cache@v3
       with:
@@ -40,17 +37,14 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-node-
 
-    # Step 5: Install Dependencies
     - name: Install Dependencies
       run: npm install openai @octokit/rest@18.12.0
   
-    # Step 7: Fetch PR Diff
     - name: Fetch PR Diff
       id: get_diff
       run: |
         git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.ts' '*.js' '*.sql' > pr_diff.txt
 
-    # Step 2: Restore PR Cache
     - name: Restore PR Cache
       id: pr-cache
       uses: actions/cache@v3
@@ -60,7 +54,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pr-cache-
 
-    # Step 6: Initialize Cache if Missing
     - name: Initialize Cache if Missing
       run: |
         if [ ! -f .github/cache/cache.json ] || [ ! -s .github/cache/cache.json ]; then
@@ -71,12 +64,10 @@ jobs:
           echo "Cache file exists and contains data:"
           cat .github/cache/cache.json
         fi
-    # Step 8: Generate ChatGPT Feedback
     - name: Generate ChatGPT Feedback
       id: generate_feedback
       run: node .github/scripts/generate_feedback.js
 
-    # Step 10: Post Inline Comments
     - name: Post Inline Comments
       run: node .github/scripts/post_comments.js
 

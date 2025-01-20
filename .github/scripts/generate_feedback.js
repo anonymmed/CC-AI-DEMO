@@ -406,24 +406,53 @@ async function generateFeedback() {
         process.exit(0);
       } 
 
-    // Step 4: Add Messages for each chunk
-    let chunkIndex = 1;
-    let lastMessage;
-    for (const { filePath, addedLines } of changes) {
-      let chunk = [];
-      let currentTokenCount = 0;
-
-      for (const line of addedLines) {
-        const lineTokenEstimate = Math.ceil(
-          (line.lineDiff.length || AVERAGE_LINE_CHARACTERS) /
-            CHARACTERS_PER_TOKEN
-        );
-
-        if (
-          currentTokenCount + lineTokenEstimate >
-          MAX_TOKENS - RESERVED_TOKENS
-        ) {
-          lastMessage = await openai.beta.threads.messages.create(threadId, {
+      let lastMessage; // Store the last message ID globally if needed
+      for (const { filePath, addedLines } of changes) {
+        if (!addedLines.length) continue; // Skip files with no added lines
+      
+        let chunk = [];
+        let currentTokenCount = 0;
+        let chunkIndex = 1;
+      
+        console.log(`Processing file: ${filePath} with ${addedLines.length} lines`);
+      
+        for (const line of addedLines) {
+          const lineTokenEstimate = Math.ceil(
+            (line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN
+          );
+      
+          if (
+            currentTokenCount + lineTokenEstimate >
+            MAX_TOKENS - RESERVED_TOKENS
+          ) {
+            console.log(`Sending chunk ${chunkIndex} for file ${filePath}...`);
+            // Send the current chunk
+            const message = await openai.beta.threads.messages.create(threadId, {
+              role: "user",
+              content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
+                chunk,
+                null,
+                2
+              )}`,
+            });
+      
+            console.log(
+              `Chunk ${chunkIndex} for file ${filePath} sent as message: ${message.id}`
+            );
+            lastMessage = message; // Keep track of the last message ID
+            chunk = []; // Reset chunk
+            currentTokenCount = 0;
+            chunkIndex++;
+          }
+      
+          chunk.push(line);
+          currentTokenCount += lineTokenEstimate;
+        }
+      
+        // Send the remaining chunk for the file
+        if (chunk.length > 0) {
+          console.log(`Sending final chunk ${chunkIndex} for file ${filePath}...`);
+          const message = await openai.beta.threads.messages.create(threadId, {
             role: "user",
             content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
               chunk,
@@ -431,32 +460,21 @@ async function generateFeedback() {
               2
             )}`,
           });
-         // console.log(`user message created: ${lastMessage.id} with body : ${JSON.stringify(content)}`);
-          chunk = [];
-          currentTokenCount = 0;
-          chunkIndex++;
+      
+          console.log(
+            `Final chunk ${chunkIndex} for file ${filePath} sent as message: ${message.id}`
+          );
+          lastMessage = message; // Keep track of the last message ID
         }
-
-        chunk.push(line);
-        currentTokenCount += lineTokenEstimate;
       }
-      if (chunk.length > 0) {
-        lastMessage = await openai.beta.threads.messages.create(threadId, {
-          role: "user",
-          content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
-            chunk,
-            null,
-            2
-          )}`,
-        });
-        // console.log(`user message created: ${lastMessage.id} with body : ${JSON.stringify(chunk)}`);
+      
+      if (!lastMessage) {
+        console.error("No messages were created. Exiting...");
+        process.exit(1);
       }
-    }
-    if (!lastMessage) {
-      console.error("No messages were created. Exiting...");
-      process.exit(1);
-    }
-    const lastMessageIdBeforeRun = lastMessage.id;
+      
+      const lastMessageIdBeforeRun = lastMessage.id;
+      console.log("Last message ID before run:", lastMessageIdBeforeRun);
     // Step 5: Create a Run
     // console.log(`Creating run for thread ${threadId}...`);
     const run = await openai.beta.threads.runs.createAndPoll(threadId, {

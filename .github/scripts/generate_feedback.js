@@ -236,10 +236,9 @@ generateFeedback();
 console.log("Generate Feedback script started");
 
 const fs = require("fs");
-const path = require("path");
 const { execSync } = require("child_process");
 const { OpenAI } = require("openai");
-const cachePath = "./.github/cache/cache.json";
+const cachePath = ".github/cache/cache.json";
 const rulesPath = ".github/rules/rules.json";
 const rulesData = fs.readFileSync(rulesPath, "utf8");
 const rules = JSON.parse(rulesData);

@@ -4,16 +4,13 @@ const { Octokit } = require("@octokit/rest");
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 async function postComments() {
   try {
-
     const feedbacksData = await fs.readFile("feedbacks.json", "utf8");
     const feedbacks = JSON.parse(feedbacksData);
     const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
     const pull_number = process.env.PR_NUMBER;
-    console.log("Parsed Feedbacks:", feedbacks);
-
     for (const feedback of feedbacks) {
       const { filePath, line, commitId, issueDescription, fix } = feedback;
-      if(!fix) {
+      if (!fix) {
         console.log("Fix is not available for the issue: ", feedback);
       }
       const body = `${issueDescription} \n  in line ${line} ${

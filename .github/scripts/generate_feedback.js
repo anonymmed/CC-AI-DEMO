@@ -250,6 +250,7 @@ For each code snippet:
 3. If multiple rules are violated in the same code snippet, create separate JSON objects for each violation.
 4. Include fixes for each issue in the JSON response, specific to the violation being addressed.
 5. always look at the line before and after to understand if an issue is happening or not.
+6.Always return valid JSON without any additional formatting or code block markers (e.g., no \`\`\`json).
 ### Rules for Review:
 ${JSON.stringify(rules)}
 ### Respond in This JSON Format:
@@ -403,7 +404,7 @@ async function generateFeedback() {
               2
             )}`,
           });
-
+          console.log(`user message created: ${lastMessage.id}`);
           chunk = [];
           currentTokenCount = 0;
           chunkIndex++;
@@ -422,6 +423,7 @@ async function generateFeedback() {
             2
           )}`,
         });
+        console.log(`user message created: ${lastMessage.id}`);
       }
     }
     if (!lastMessage) {
@@ -439,32 +441,35 @@ async function generateFeedback() {
       console.error(`Run failed with status: ${run.status}`);
       process.exit(1);
     }
-
     // Step 6: Retrieve and save feedback
     const assistantMessages = await openai.beta.threads.messages.list(
       thread.id,
       {
         order: "desc", // Ensure messages are retrieved in chronological order
         before: lastMessageIdBeforeRun, // Only retrieve messages after the last user message
+        limit: 1, // Limit to the last message
       }
     );
 
-// Sanitize and parse each assistant message
-const feedbacks = assistantMessages.data
-  .filter((message) => message.role === "assistant")
-  .map((message) => {
-    try {
-      // Sanitize and parse each message content
-      const sanitizedMessage = sanitizeJsonString(message.content[0].text.value);
-      return JSON.parse(sanitizedMessage); // Parse into JSON object
-    } catch (error) {
-      console.error("Error parsing assistant message content:", error.message);
-      return null; // Skip invalid messages
-    }
-  })
-  .filter(Boolean); // Remove null values
-
-    console.log("GPT assistant sanitized feedbacks:", feedbacks);
+    // Sanitize and parse each assistant message
+    const feedbacks = assistantMessages.data
+      .filter((message) => message.role === "assistant")
+      .flatMap((message) => {
+        try {
+          // Sanitize and parse each message content
+          const sanitizedMessage = sanitizeJsonString(
+            message.content[0].text.value
+          );
+          return JSON.parse(sanitizedMessage); // Parse into JSON object
+        } catch (error) {
+          console.error(
+            "Error parsing assistant message content:",
+            error.message
+          );
+          return null; // Skip invalid messages
+        }
+      })
+      .filter(Boolean); // Remove null values
     await fs.promises.writeFile(
       "feedbacks.json",
       JSON.stringify(feedbacks, null, 2),

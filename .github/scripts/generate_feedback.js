@@ -238,7 +238,7 @@ console.log("Generate Feedback script started");
 const fs = require("fs");
 const { execSync } = require("child_process");
 const { OpenAI } = require("openai");
-
+const cachePath = ".github/cache/cache.json";
 const rulesPath = ".github/rules/rules.json";
 const rulesData = fs.readFileSync(rulesPath, "utf8");
 const rules = JSON.parse(rulesData);
@@ -278,6 +278,14 @@ const MAX_TOKENS = 8000;
 const AVERAGE_LINE_CHARACTERS = 80;
 const CHARACTERS_PER_TOKEN = 4;
 const RESERVED_TOKENS = 1000;
+async function loadCache() {
+  const cacheData = await fs.promises.readFile(cachePath, "utf8");
+  return JSON.parse(cacheData);
+}
+
+async function saveCache(cache) {
+  await fs.promises.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf8");
+}
 
 function sanitizeJsonString(rawString) {
   try {
@@ -309,7 +317,18 @@ async function generateFeedback() {
   try {
     // Load rules and diff
     const diff = await fs.promises.readFile("pr_diff.txt", "utf8");
+    // Determine current PR ID
+    const prId = process.env.PR_NUMBER;
+    
+    const cache = await loadCache();
+    // Initialize or retrieve assistant and thread
+    if (!cache[prId]) {
+      cache[prId] = { assistantId: null, threadId: null, reviewedCommits: [] };
+    }
 
+    let assistantId = cache[prId]?.assistantId;
+    let threadId = cache[prId]?.threadId;
+    if(!assistantId) {
     // Step 1: Create an Assistant for this PR
     const assistant = await openai.beta.assistants.create({
       name: `PR Review Assistant`,
@@ -319,72 +338,121 @@ async function generateFeedback() {
       temperature: 0.5,
       top_p: 1,
     });
+    assistantId = assistant.id;
+    // console.log(`Assistant created: ${assistantId}`);
+    cache[prId].assistantId = assistantId;
+    } else {
+      //console.log(`Reusing existing Assistant: ${assistantId}`);
+    }
 
-    console.log(`Assistant created: ${assistant.id}`);
-
-    // Step 2: Create a Thread for this PR
+    if(!threadId) { 
+          // Step 2: Create a Thread for this PR
     const thread = await openai.beta.threads.create();
-    console.log(`Thread created: ${thread.id}`);
-
+    threadId = thread.id;
+    // console.log(`Thread created: ${threadId}`);
+    cache[prId].threadId = threadId;
+    } else {
+      // console.log(`Reusing existing Thread: ${threadId}`);
+    }
     // Step 3: Process changes and create Messages
     const changes = diff
-      .split("diff --git")
-      .slice(1)
-      .map((change) => {
-        const lines = change.split("\n");
-        const filePathMatch = lines[0]?.match(/b\/(\S+)/);
-        const filePath = filePathMatch ? filePathMatch[1] : null;
-
-        if (
-          !filePath ||
-          filePath.includes("workflows/") ||
-          filePath.includes("rules/") ||
-          filePath.includes("scripts/")
-        ) {
-          return null; // Skip invalid files
-        }
-
-        const header = lines.find((line) => line.startsWith("@@"));
-        const position = header
-          ? parseInt(header.match(/\+([0-9]+)/)?.[1], 10)
-          : null;
-
-        const addedLines = [];
-        let lineCounter = position || 0;
-
-        for (const line of lines) {
-          if (line.startsWith("+") && !line.startsWith("+++")) {
+    .split("diff --git")
+    .slice(1)
+    .map((change) => {
+      const lines = change.trim().split("\n");
+      const filePathMatch = lines[0]?.match(/b\/(\S+)/);
+      const filePath = filePathMatch ? filePathMatch[1] : null;
+  
+      if (
+        !filePath ||
+        filePath.includes("workflows/") ||
+        filePath.includes("rules/") ||
+        filePath.includes("scripts/") 
+      ) {
+        return null; // Skip invalid or workflow files
+      }
+  
+      const addedLines = [];
+      let lineCounter = null; // Tracks the current line number for added lines
+  
+      lines.forEach((line) => {
+        // Detect hunk headers to reset lineCounter
+        const hunkHeaderMatch = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+        if (hunkHeaderMatch) {
+          lineCounter = parseInt(hunkHeaderMatch[1], 10); // Reset to the starting line of this hunk
+        } else if (line.startsWith("+") && !line.startsWith("+++")) {
+          // Process added lines
+          if (lineCounter !== null) {
             addedLines.push({
               lineNumber: lineCounter,
-              lineDiff: line.slice(1),
+              lineDiff: line.slice(1), // Exclude the '+' symbol
             });
+            lineCounter++; // Increment for the next added line
+          }
+        } else if (!line.startsWith("-")) {
+          // Increment lineCounter for unchanged lines (skip removals)
+          if (lineCounter !== null) {
             lineCounter++;
           }
         }
+      });
+  
+      return addedLines.length ? { filePath, addedLines } : null;
+    })
+    .filter(Boolean); // Remove null values
+      if(changes.length === 0) { 
+        console.log('No changes found. saving cache and exiting...');
+        await saveCache(cache);
+        process.exit(0);
+      } 
 
-        return addedLines.length ? { filePath, addedLines } : null;
-      })
-      .filter(Boolean);
-
-    // Step 4: Add Messages for each chunk
-    let chunkIndex = 1;
-    let lastMessage;
-    for (const { filePath, addedLines } of changes) {
-      let chunk = [];
-      let currentTokenCount = 0;
-
-      for (const line of addedLines) {
-        const lineTokenEstimate = Math.ceil(
-          (line.lineDiff.length || AVERAGE_LINE_CHARACTERS) /
-            CHARACTERS_PER_TOKEN
-        );
-
-        if (
-          currentTokenCount + lineTokenEstimate >
-          MAX_TOKENS - RESERVED_TOKENS
-        ) {
-          console.log(`Adding chunk ${chunkIndex} for file ${filePath}...`);
-          lastMessage = await openai.beta.threads.messages.create(thread.id, {
+      let lastMessage; // Store the last message ID globally if needed
+      for (const { filePath, addedLines } of changes) {
+        if (!addedLines.length) continue; // Skip files with no added lines
+      
+        let chunk = [];
+        let currentTokenCount = 0;
+        let chunkIndex = 1;
+      
+        console.log(`Processing file: ${filePath} with ${addedLines.length} lines`);
+      
+        for (const line of addedLines) {
+          const lineTokenEstimate = Math.ceil(
+            (line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN
+          );
+      
+          if (
+            currentTokenCount + lineTokenEstimate >
+            MAX_TOKENS - RESERVED_TOKENS
+          ) {
+            console.log(`Sending chunk ${chunkIndex} for file ${filePath}...`);
+            // Send the current chunk
+            const message = await openai.beta.threads.messages.create(threadId, {
+              role: "user",
+              content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
+                chunk,
+                null,
+                2
+              )}`,
+            });
+      
+            console.log(
+              `Chunk ${chunkIndex} for file ${filePath} sent as message: ${message.id}`
+            );
+            lastMessage = message; // Keep track of the last message ID
+            chunk = []; // Reset chunk
+            currentTokenCount = 0;
+            chunkIndex++;
+          }
+      
+          chunk.push(line);
+          currentTokenCount += lineTokenEstimate;
+        }
+      
+        // Send the remaining chunk for the file
+        if (chunk.length > 0) {
+          console.log(`Sending final chunk ${chunkIndex} for file ${filePath}...`);
+          const message = await openai.beta.threads.messages.create(threadId, {
             role: "user",
             content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
               chunk,
@@ -392,46 +460,34 @@ async function generateFeedback() {
               2
             )}`,
           });
-          console.log(`user message created: ${lastMessage.id}`);
-          chunk = [];
-          currentTokenCount = 0;
-          chunkIndex++;
+      
+          console.log(
+            `Final chunk ${chunkIndex} for file ${filePath} sent as message: ${message.id}`
+          );
+          lastMessage = message; // Keep track of the last message ID
         }
-
-        chunk.push(line);
-        currentTokenCount += lineTokenEstimate;
       }
-      if (chunk.length > 0) {
-        console.log(`Adding final chunk ${chunkIndex} for file ${filePath}...`);
-        lastMessage = await openai.beta.threads.messages.create(thread.id, {
-          role: "user",
-          content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
-            chunk,
-            null,
-            2
-          )}`,
-        });
-        console.log(`user message created: ${lastMessage.id}`);
+      
+      if (!lastMessage) {
+        console.error("No messages were created. Exiting...");
+        process.exit(1);
       }
-    }
-    if (!lastMessage) {
-      console.error("No messages were created. Exiting...");
-      process.exit(1);
-    }
-    const lastMessageIdBeforeRun = lastMessage.id;
+      
+      const lastMessageIdBeforeRun = lastMessage.id;
+      console.log("Last message ID before run:", lastMessageIdBeforeRun);
     // Step 5: Create a Run
-    console.log(`Creating run for thread ${thread.id}...`);
-    const run = await openai.beta.threads.runs.createAndPoll(thread.id, {
-      assistant_id: assistant.id,
+    // console.log(`Creating run for thread ${threadId}...`);
+    const run = await openai.beta.threads.runs.createAndPoll(threadId, {
+      assistant_id: assistantId,
     });
 
     if (!run || run.status !== "completed") {
-      console.error(`Run failed with status: ${run.status}`);
+      console.error(`Run failed with status: ${run.status}, ${JSON.stringify(run)}`);
       process.exit(1);
     }
     // Step 6: Retrieve and save feedback
     const assistantMessages = await openai.beta.threads.messages.list(
-      thread.id,
+      threadId,
       {
         order: "desc", // Ensure messages are retrieved in chronological order
         before: lastMessageIdBeforeRun, // Only retrieve messages after the last user message
@@ -474,7 +530,7 @@ async function generateFeedback() {
           ? parseInt(originalLineMatch, 10)
           : feedback.line;
 
-        console.log(`line : ${feedback.line} mapped to the original line ${originalLine}`);
+        //console.log(`line : ${feedback.line} mapped to the original line ${originalLine}`);
         return { ...feedback, line: originalLine, commitId: commitHash }; // Update with line and commit hash
       } catch (error) {
         console.error(
@@ -490,7 +546,8 @@ async function generateFeedback() {
       JSON.stringify(updatedFeedbacks, null, 2),
       "utf8"
     );
-    console.log("Feedbacks written to feedbacks.json: ", updatedFeedbacks);
+    //console.log("Feedbacks written to feedbacks.json: ", updatedFeedbacks);
+    await saveCache(cache);
   } catch (error) {
     console.error("Error generating feedback:", error);
     process.exit(1);

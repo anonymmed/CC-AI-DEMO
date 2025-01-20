@@ -1,8 +1,13 @@
 name: ChatGPT Inline Code Review
 
+env:
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+  GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
 
 permissions: 
   contents: write
@@ -11,6 +16,7 @@ permissions:
 
 jobs:
   code_review:
+    if: github.event.pull_request.merged != true && github.event.action != 'closed'  # Run only for non-closed PRs
     runs-on: ubuntu-latest
 
     steps:
@@ -33,21 +39,70 @@ jobs:
           ${{ runner.os }}-node-
 
     - name: Install Dependencies
-      run: npm install openai @octokit/rest@18.12.0 esprima
-
+      run: npm install openai @octokit/rest@18.12.0
+  
     - name: Fetch PR Diff
       id: get_diff
       run: |
-        git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.ts' '*.js' '*.sql' > pr_diff.txt
+        git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.ts' '*.js' '*.sql' | tee pr_diff.txt
 
+    - name: Restore PR Cache
+      id: pr-cache
+      uses: actions/cache@v3
+      with:
+        path: .github/cache/cache.json
+        key: ${{ runner.os }}-pr-cache-${{ github.event.pull_request.number }}
+        restore-keys: |
+          ${{ runner.os }}-pr-cache-
+
+    - name: Initialize Cache if Missing
+      run: |
+        if [ ! -f .github/cache/cache.json ] || [ ! -s .github/cache/cache.json ]; then
+          echo "Cache file not found or empty. Initializing new cache."
+          mkdir -p .github/cache
+          echo "{}" > .github/cache/cache.json
+        else
+          echo "Cache file exists and contains data:"
+          cat .github/cache/cache.json
+        fi
     - name: Generate ChatGPT Feedback
       id: generate_feedback
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       run: node .github/scripts/generate_feedback.js
 
     - name: Post Inline Comments
-      env:
-        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
-        PR_NUMBER: ${{ github.event.number }}
       run: node .github/scripts/post_comments.js
+
+    - name: Debug Restored Cache
+      run: |
+        if [ -f .github/cache/cache.json ]; then
+          echo "Cache file exists after restore:"
+          cat .github/cache/cache.json
+        else
+          echo "Cache file does not exist after restore."
+        fi
+
+  # Cleanup Job
+  cleanup:
+    if: github.event.action == 'closed'  # Run only when the PR is closed
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Restore PR Cache
+      uses: actions/cache@v3
+      with:
+        path: .github/cache/cache.json
+        key: ${{ runner.os }}-pr-cache-${{ github.event.pull_request.number }}
+        restore-keys: |
+          ${{ runner.os }}-pr-cache-
+
+    - name: Cleanup Assistant and Thread
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: node .github/scripts/cleanup_resources.js
+
+    - name: Delete PR Cache
+      run: rm -rf .github/cache/cache.json

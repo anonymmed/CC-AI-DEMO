@@ -238,7 +238,7 @@ console.log("Generate Feedback script started");
 const fs = require("fs");
 const { execSync } = require("child_process");
 const { OpenAI } = require("openai");
-
+const cachePath = "./.github/cache/cache.json";
 const rulesPath = ".github/rules/rules.json";
 const rulesData = fs.readFileSync(rulesPath, "utf8");
 const rules = JSON.parse(rulesData);
@@ -292,7 +292,12 @@ async function loadCache() {
 
 async function saveCache(cache) {
   try {
+    const cacheDir = "./.github/cache/";
+    if (!fs.existsSync(cacheDir)) {
+      await fs.promises.mkdir(cacheDir, { recursive: true });
+    }
     await fs.promises.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf8");
+    console.log("Cache saved successfully.");
   } catch (error) {
     console.error("Error saving cache:", error.message);
   }
@@ -344,11 +349,15 @@ async function generateFeedback() {
     // Load rules and diff
     const diff = await fs.promises.readFile("pr_diff.txt", "utf8");
     // Determine current PR ID
-    const prId = process.env.PR_NUMBER || "default_pr";
+    const prId = process.env.PR_NUMBER;
     console.log(`Processing PR: ${prId}`);
     
     const cache = await loadCache();
-
+    if (!cache[prId]) {
+      console.log('cannot load cache!');
+      cache[prId] = { assistantId: null, threadId: null, reviewedCommits: [] };
+    }
+  
     let assistantId = cache[prId]?.assistantId;
     let threadId = cache[prId]?.threadId;
     if(!assistantId) {

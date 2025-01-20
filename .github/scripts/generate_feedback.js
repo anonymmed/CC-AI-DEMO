@@ -285,8 +285,6 @@ async function loadCache() {
 
 async function saveCache(cache) {
   await fs.promises.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf8");
-  const loadedCache = await loadCache();
-  console.log("loaded cache after : ", loadedCache);
 }
 
 function sanitizeJsonString(rawString) {
@@ -321,10 +319,8 @@ async function generateFeedback() {
     const diff = await fs.promises.readFile("pr_diff.txt", "utf8");
     // Determine current PR ID
     const prId = process.env.PR_NUMBER;
-    console.log(`Processing PR: ${prId}`);
     
     const cache = await loadCache();
-    console.log("Loaded cache:", cache);
     // Initialize or retrieve assistant and thread
     if (!cache[prId]) {
       cache[prId] = { assistantId: null, threadId: null, reviewedCommits: [] };
@@ -343,20 +339,20 @@ async function generateFeedback() {
       top_p: 1,
     });
     assistantId = assistant.id;
-    console.log(`Assistant created: ${assistantId}`);
+    // console.log(`Assistant created: ${assistantId}`);
     cache[prId].assistantId = assistantId;
     } else {
-      console.log(`Reusing existing Assistant: ${assistantId}`);
+      //console.log(`Reusing existing Assistant: ${assistantId}`);
     }
 
     if(!threadId) { 
           // Step 2: Create a Thread for this PR
     const thread = await openai.beta.threads.create();
     threadId = thread.id;
-    console.log(`Thread created: ${threadId}`);
+    // console.log(`Thread created: ${threadId}`);
     cache[prId].threadId = threadId;
     } else {
-      console.log(`Reusing existing Thread: ${threadId}`);
+      // console.log(`Reusing existing Thread: ${threadId}`);
     }
     // Step 3: Process changes and create Messages
     const changes = diff
@@ -428,7 +424,6 @@ async function generateFeedback() {
           currentTokenCount + lineTokenEstimate >
           MAX_TOKENS - RESERVED_TOKENS
         ) {
-          console.log(`Adding chunk ${chunkIndex} for file ${filePath}...`);
           lastMessage = await openai.beta.threads.messages.create(threadId, {
             role: "user",
             content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
@@ -437,7 +432,7 @@ async function generateFeedback() {
               2
             )}`,
           });
-          console.log(`user message created: ${lastMessage.id} with body : ${JSON.stringify(content)}`);
+         // console.log(`user message created: ${lastMessage.id} with body : ${JSON.stringify(content)}`);
           chunk = [];
           currentTokenCount = 0;
           chunkIndex++;
@@ -447,7 +442,6 @@ async function generateFeedback() {
         currentTokenCount += lineTokenEstimate;
       }
       if (chunk.length > 0) {
-        console.log(`Adding final chunk ${chunkIndex} for file ${filePath}...`);
         lastMessage = await openai.beta.threads.messages.create(threadId, {
           role: "user",
           content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
@@ -456,7 +450,7 @@ async function generateFeedback() {
             2
           )}`,
         });
-        console.log(`user message created: ${lastMessage.id} with body : ${JSON.stringify(chunk)}`);
+        // console.log(`user message created: ${lastMessage.id} with body : ${JSON.stringify(chunk)}`);
       }
     }
     if (!lastMessage) {
@@ -465,7 +459,7 @@ async function generateFeedback() {
     }
     const lastMessageIdBeforeRun = lastMessage.id;
     // Step 5: Create a Run
-    console.log(`Creating run for thread ${threadId}...`);
+    // console.log(`Creating run for thread ${threadId}...`);
     const run = await openai.beta.threads.runs.createAndPoll(threadId, {
       assistant_id: assistantId,
     });
@@ -519,7 +513,7 @@ async function generateFeedback() {
           ? parseInt(originalLineMatch, 10)
           : feedback.line;
 
-        console.log(`line : ${feedback.line} mapped to the original line ${originalLine}`);
+        //console.log(`line : ${feedback.line} mapped to the original line ${originalLine}`);
         return { ...feedback, line: originalLine, commitId: commitHash }; // Update with line and commit hash
       } catch (error) {
         console.error(
@@ -535,7 +529,7 @@ async function generateFeedback() {
       JSON.stringify(updatedFeedbacks, null, 2),
       "utf8"
     );
-    console.log("Feedbacks written to feedbacks.json: ", updatedFeedbacks);
+    //console.log("Feedbacks written to feedbacks.json: ", updatedFeedbacks);
     await saveCache(cache);
   } catch (error) {
     console.error("Error generating feedback:", error);

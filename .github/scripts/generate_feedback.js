@@ -456,7 +456,7 @@ async function generateFeedback() {
     console.log("GPT assistant sanitized feedbacks:", feedbacks);
     await fs.promises.writeFile(
       "feedbacks.json",
-      JSON.stringify(sanitizedFeedback, null, 2),
+      JSON.stringify(feedbacks, null, 2),
       "utf8"
     );
     console.log("Feedbacks written to feedbacks.json");

@@ -367,8 +367,13 @@ async function generateFeedback() {
       const filePathMatch = lines[0]?.match(/b\/(\S+)/);
       const filePath = filePathMatch ? filePathMatch[1] : null;
   
-      if (!filePath) {
-        return null; // Skip invalid file paths
+      if (
+        !filePath ||
+        filePath.includes("workflows/") ||
+        filePath.includes("rules/") ||
+        filePath.includes("scripts/") 
+      ) {
+        return null; // Skip invalid or workflow files
       }
   
       const addedLines = [];
@@ -399,7 +404,7 @@ async function generateFeedback() {
       return addedLines.length ? { filePath, addedLines } : null;
     })
     .filter(Boolean); // Remove null values
-
+    console.log("Changes detected:", JSON.stringify(changes));
       if(changes.length === 0) { 
         console.log('No changes found. saving cache and exiting...');
         await saveCache(cache);

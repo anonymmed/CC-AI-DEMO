@@ -280,58 +280,13 @@ const AVERAGE_LINE_CHARACTERS = 80;
 const CHARACTERS_PER_TOKEN = 4;
 const RESERVED_TOKENS = 1000;
 async function loadCache() {
-  try {
-    if (fs.existsSync(cachePath)) {
-      const cacheData = await fs.promises.readFile(cachePath, "utf8");
-      return JSON.parse(cacheData);
-    } else {
-      console.warn("Cache file not found. Creating a new cache...");
-      await initializeCache(); // Initialize the cache if it doesn't exist
-      return {};
-    }
-
-  } catch (error) {
-    console.error("Error loading cache file:", error.message);
-    console.warn("Creating a fresh cache...");
-    await initializeCache(); // Handle cases where cache creation is needed
-    return {};
-  }
-}
-async function initializeCache() {
-  try {
-    const cacheDir = path.dirname(cachePath); // Get the directory of the cache file
-    if (!fs.existsSync(cacheDir)) {
-      await fs.promises.mkdir(cacheDir, { recursive: true }); // Ensure the directory exists
-    }
-    await fs.promises.writeFile(cachePath, JSON.stringify({}, null, 2), "utf8");
-    console.log("Initialized a new cache file at", cachePath);
-  } catch (error) {
-    console.error("Error initializing cache:", error.message);
-  }
+  const cacheData = await fs.readFile(cachePath, "utf8");
+  return JSON.parse(cacheData);
 }
 
 async function saveCache(cache) {
-  try {
-    await fs.promises.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf8");
-    console.log("Cache saved successfully.");
-  } catch (error) {
-    console.error("Error saving cache:", error.message);
-  }
-}
-async function updateCache(prId, newData) {
-  try {
-    const cache = await loadCache();
-
-    // Merge existing data with new data for the PR
-    cache[prId] = {
-      ...(cache[prId] || {}), // Keep existing data
-      ...newData, // Add or overwrite with new data
-    };
-
-    await saveCache(cache);
-  } catch (error) {
-    console.error("Error updating cache:", error.message);
-  }
+  await fs.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf8");
+  console.log("Cache saved successfully.");
 }
 
 function sanitizeJsonString(rawString) {
@@ -369,10 +324,7 @@ async function generateFeedback() {
     console.log(`Processing PR: ${prId}`);
     
     const cache = await loadCache();
-    if (!cache[prId]) {
-      console.log('cannot load cache!');
-      cache[prId] = { assistantId: null, threadId: null, reviewedCommits: [] };
-    }
+    console.log("Loaded cache:", cache);
   
     let assistantId = cache[prId]?.assistantId;
     let threadId = cache[prId]?.threadId;
@@ -388,6 +340,7 @@ async function generateFeedback() {
     });
     assistantId = assistant.id;
     console.log(`Assistant created: ${assistantId}`);
+    cache[prId].assistantId = assistantId;
     } else {
       console.log(`Reusing existing Assistant: ${assistantId}`);
     }
@@ -397,6 +350,7 @@ async function generateFeedback() {
     const thread = await openai.beta.threads.create();
     threadId = thread.id;
     console.log(`Thread created: ${threadId}`);
+    cache[prId].threadId = threadId;
     } else {
       console.log(`Reusing existing Thread: ${threadId}`);
     }

@@ -25,22 +25,6 @@ jobs:
       with:
         fetch-depth: 0  # Fetch all history for accurate git blame
 
-    # Step 2: Restore PR Cache (using Artifacts)
-    - name: Restore PR Cache
-      id: restore-pr-cache
-      run: |
-        mkdir -p .github/cache
-        if curl --fail --silent --output .github/cache/cache.json \
-          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Accept: application/vnd.github.v3+json" \
-          -X GET \
-          "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/pr-cache-${{ github.event.pull_request.number }}"; then
-          echo "Cache restored for PR #${{ github.event.pull_request.number }}"
-        else
-          echo "{}" > .github/cache/cache.json
-          echo "No cache found for PR #${{ github.event.pull_request.number }}. Initialized new cache."
-        fi
-
     # Step 3: Fetch PR Branch
     - name: Fetch PR Branch
       run: |
@@ -65,6 +49,7 @@ jobs:
       run: |
         if [ ! -f .github/cache/cache.json ] || [ ! -s .github/cache/cache.json ]; then
           echo "Cache file not found or empty. Initializing new cache."
+          mkdir -p .github/cache
           echo "{}" > .github/cache/cache.json
         else
           echo "Cache file exists and contains data:"
@@ -86,7 +71,16 @@ jobs:
     - name: Post Inline Comments
       run: node .github/scripts/post_comments.js
 
-    # Step 11: Debug Restored Cache
+    # Step 2: Restore PR Cache
+    - name: Restore PR Cache
+      id: pr-cache
+      uses: actions/cache@v3
+      with:
+        path: .github/cache/cache.json
+        key: ${{ runner.os }}-pr-cache-${{ github.event.pull_request.number }}
+        restore-keys: |
+          ${{ runner.os }}-pr-cache-
+
     - name: Debug Restored Cache
       run: |
         if [ -f .github/cache/cache.json ]; then

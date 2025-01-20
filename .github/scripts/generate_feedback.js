@@ -482,7 +482,7 @@ async function generateFeedback() {
     });
 
     if (!run || run.status !== "completed") {
-      console.error(`Run failed with status: ${run.status}`);
+      console.error(`Run failed with status: ${run.status}, ${run}`);
       process.exit(1);
     }
     // Step 6: Retrieve and save feedback

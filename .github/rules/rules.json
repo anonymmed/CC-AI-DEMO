@@ -1,0 +1,102 @@
+[
+  {
+    "rule": "Function Documentation and Summary Format",
+    "description": "All functions must include a summary comment or inheritdoc documenting them. The summary must describe the function's purpose, include all parameters with their descriptions, and specify the return type, if applicable. All documentation must follow proper formatting and be in English without any typos.",
+    "example": "/// <summary>\n/// Calculates the sum of two numbers.\n/// </summary>\n/// <param name=\"a\">The first number.</param>\n/// <param name=\"b\">The second number.</param>\n/// <returns>The sum of the numbers.</returns>"
+  },
+  {
+    "rule": "SQL Query Best Practices",
+    "description": "Avoid using `SELECT *` in SQL queries; specify the required columns explicitly.",
+    "example": "SELECT id, name FROM Users;"
+  },
+  {
+    "rule": "PascalCase for Method Names",
+    "description": "All method names in C# must use PascalCase naming convention.",
+    "example": "public void HandleError()"
+  },
+  {
+    "rule": "Avoid Magic Numbers",
+    "description": "Avoid using magic numbers in the code; instead, use named constants or variables.",
+    "example": "const int MaxRetries = 5;\nfor (int i = 0; i < MaxRetries; i++) { }"
+  },
+  {
+    "rule": "Curly Braces for If Statements",
+    "description": "All `if` statements must use curly braces `{}` even if the body contains a single statement.",
+    "example": "if (condition) { return true; }"
+  },
+  {
+    "rule": "Consistent Indentation",
+    "description": "Use consistent indentation throughout the codebase, such as 4 spaces for C#.",
+    "example": "public void SampleFunction() { }"
+  },
+  {
+    "rule": "Consistent Naming for Variables",
+    "description": "Use camelCase for local variables and parameters in C#.",
+    "example": "int totalItems = 10;"
+  },
+  {
+    "rule": "Custom Exception Usage",
+    "description": "Use the custom exception type `EntityNotFoundException` for handling cases where an entity is not found instead of KeyNotFoundException",
+    "example": "throw new EntityNotFoundException();"
+  },
+  {
+    "rule": "TODO Comment Traceability",
+    "description": "Include a reference to a ticket in TODO comments to ensure traceability.",
+    "example": "// TODO DEV-23710: Refactor to use CertificateService.GetCertificateContent()"
+  },
+  {
+    "rule": "Avoid Deep Nesting",
+    "description": "Avoid deeply nested blocks of code; refactor into smaller, more readable methods.",
+    "example": "if (condition1 && condition2) { HandleLogic(); }"
+  },
+  {
+    "rule": "Null Checking Best Practices",
+    "description": "Use null-checking best practices, such as null-coalescing operators or helper methods.",
+    "example": "string name = input ?? \"Default Name\";"
+  },
+  {
+    "rule": "String Interpolation Over Concatenation",
+    "description": "Use string interpolation ($\"...\") instead of string concatenation (+) for better readability and performance.",
+    "example": "string message = $\"Hello, {name}!\";"
+  },
+  {
+    "rule": "Avoid Async Void Methods",
+    "description": "Always use async Task instead of async void unless it's an event handler.",
+    "example": "public async Task ProcessDataAsync() { }"
+  },
+  {
+    "rule": "Use nameof for Parameter Validation",
+    "description": "Use the nameof operator instead of hardcoded strings for parameter validation.",
+    "example": "if (value == null) throw new Exception(nameof(value));"
+  },
+  {
+    "rule": "Avoid Blocking Calls on Tasks",
+    "description": "Avoid .Result or .Wait() on tasks; use await instead.",
+    "example": "var result = await SomeAsyncMethod();"
+  },
+  {
+    "rule": "Use readonly for Immutable Class-Level Fields",
+    "description": "Mark fields declared at the class level that don't change after initialization as readonly.",
+    "example": "private readonly int value;"
+  },
+  {
+    "rule": "Use StringComparison for String Comparisons",
+    "description": "Specify StringComparison explicitly to avoid culture-related bugs.",
+    "example": "if (name.Equals(\"test\", StringComparison.OrdinalIgnoreCase)) { }"
+  },
+  {
+    "rule": "Avoid Catching System.Exception",
+    "description": "Catch specific exceptions instead of the general System.Exception.",
+    "example": "try { } catch (FileNotFoundException ex) { }"
+  },
+  {
+    "rule": "Avoid Public Fields",
+    "description": "Use properties instead of public fields to encapsulate data.",
+    "example": "public int Value { get; set; }"
+  },
+  {
+    "rule": "Avoid Empty Catch Blocks",
+    "description": "Never leave catch blocks empty; at least log the exception.",
+    "example": "try { } catch (Exception ex) { Log(ex); }"
+  }
+]

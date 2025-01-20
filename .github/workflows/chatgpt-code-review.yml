@@ -1,0 +1,53 @@
+name: ChatGPT Inline Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions: 
+  contents: write
+  pull-requests: write
+  repository-projects: write
+
+jobs:
+  code_review:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # Fetch all history for accurate git blame
+
+    - name: Fetch PR Branch
+      run: |
+        git fetch origin ${{ github.event.pull_request.head.ref }}
+        git checkout ${{ github.event.pull_request.head.ref }}
+
+    - name: Cache Node.js Modules
+      uses: actions/cache@v3
+      with:
+        path: ~/.npm
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - name: Install Dependencies
+      run: npm install openai @octokit/rest@18.12.0 esprima
+
+    - name: Fetch PR Diff
+      id: get_diff
+      run: |
+        git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.ts' '*.js' '*.sql' > pr_diff.txt
+
+    - name: Generate ChatGPT Feedback
+      id: generate_feedback
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: node .github/scripts/generate_feedback.js
+
+    - name: Post Inline Comments
+      env:
+        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+        PR_NUMBER: ${{ github.event.number }}
+      run: node .github/scripts/post_comments.js

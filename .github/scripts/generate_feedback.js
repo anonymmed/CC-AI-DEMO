@@ -400,7 +400,6 @@ async function generateFeedback() {
       return addedLines.length ? { filePath, addedLines } : null;
     })
     .filter(Boolean); // Remove null values
-    console.log("Changes detected:", JSON.stringify(changes));
       if(changes.length === 0) { 
         console.log('No changes found. saving cache and exiting...');
         await saveCache(cache);

@@ -44,7 +44,7 @@ jobs:
     - name: Fetch PR Diff
       id: get_diff
       run: |
-        git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.ts' '*.js' '*.sql' > pr_diff.txt
+        git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.ts' '*.js' '*.sql' | tee pr_diff.txt
 
     - name: Restore PR Cache
       id: pr-cache

@@ -283,19 +283,34 @@ async function loadCache() {
     if (fs.existsSync(cachePath)) {
       const cacheData = await fs.promises.readFile(cachePath, "utf8");
       return JSON.parse(cacheData);
+    } else {
+      console.warn("Cache file not found. Creating a new cache...");
+      await initializeCache(); // Initialize the cache if it doesn't exist
+      return {};
     }
+
   } catch (error) {
-    console.warn("Error loading cache file. Starting fresh.");
+    console.error("Error loading cache file:", error.message);
+    console.warn("Creating a fresh cache...");
+    await initializeCache(); // Handle cases where cache creation is needed
+    return {};
   }
-  return {}; // Return an empty object if no cache exists
+}
+async function initializeCache() {
+  try {
+    const cacheDir = path.dirname(cachePath); // Get the directory of the cache file
+    if (!fs.existsSync(cacheDir)) {
+      await fs.promises.mkdir(cacheDir, { recursive: true }); // Ensure the directory exists
+    }
+    await fs.promises.writeFile(cachePath, JSON.stringify({}, null, 2), "utf8");
+    console.log("Initialized a new cache file at", cachePath);
+  } catch (error) {
+    console.error("Error initializing cache:", error.message);
+  }
 }
 
 async function saveCache(cache) {
   try {
-    const cacheDir = "./.github/cache/";
-    if (!fs.existsSync(cacheDir)) {
-      await fs.promises.mkdir(cacheDir, { recursive: true });
-    }
     await fs.promises.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf8");
     console.log("Cache saved successfully.");
   } catch (error) {
@@ -380,7 +395,7 @@ async function generateFeedback() {
           // Step 2: Create a Thread for this PR
     const thread = await openai.beta.threads.create();
     threadId = thread.id;
-    console.log(`Thread created: ${thread.id}`);
+    console.log(`Thread created: ${threadId}`);
     } else {
       console.log(`Reusing existing Thread: ${threadId}`);
     }
@@ -430,6 +445,10 @@ async function generateFeedback() {
         return addedLines.length ? { filePath, addedLines } : null;
       })
       .filter(Boolean);
+      if(changes.length === 0) { 
+        console.log('No changes found. Exiting...');
+        process.exit(0);
+      }
 
     // Step 4: Add Messages for each chunk
     let chunkIndex = 1;
@@ -449,7 +468,7 @@ async function generateFeedback() {
           MAX_TOKENS - RESERVED_TOKENS
         ) {
           console.log(`Adding chunk ${chunkIndex} for file ${filePath}...`);
-          lastMessage = await openai.beta.threads.messages.create(thread.id, {
+          lastMessage = await openai.beta.threads.messages.create(threadId, {
             role: "user",
             content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
               chunk,
@@ -468,7 +487,7 @@ async function generateFeedback() {
       }
       if (chunk.length > 0) {
         console.log(`Adding final chunk ${chunkIndex} for file ${filePath}...`);
-        lastMessage = await openai.beta.threads.messages.create(thread.id, {
+        lastMessage = await openai.beta.threads.messages.create(threadId, {
           role: "user",
           content: `Review the following changes in the filePath ${filePath}:\n${JSON.stringify(
             chunk,
@@ -479,14 +498,14 @@ async function generateFeedback() {
         console.log(`user message created: ${lastMessage.id}`);
       }
     }
-    if (changes.length > 0 && !lastMessage) {
+    if (!lastMessage) {
       console.error("No messages were created. Exiting...");
       process.exit(1);
     }
     const lastMessageIdBeforeRun = lastMessage.id;
     // Step 5: Create a Run
-    console.log(`Creating run for thread ${thread.id}...`);
-    const run = await openai.beta.threads.runs.createAndPoll(thread.id, {
+    console.log(`Creating run for thread ${threadId}...`);
+    const run = await openai.beta.threads.runs.createAndPoll(threadId, {
       assistant_id: assistant.id,
     });
 
@@ -496,7 +515,7 @@ async function generateFeedback() {
     }
     // Step 6: Retrieve and save feedback
     const assistantMessages = await openai.beta.threads.messages.list(
-      thread.id,
+      threadId,
       {
         order: "desc", // Ensure messages are retrieved in chronological order
         before: lastMessageIdBeforeRun, // Only retrieve messages after the last user message

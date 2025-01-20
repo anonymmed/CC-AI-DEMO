@@ -429,7 +429,7 @@ async function generateFeedback() {
               2
             )}`,
           });
-          console.log(`user message created: ${lastMessage.id} with body : ${content}`);
+          console.log(`user message created: ${lastMessage.id} with body : ${JSON.stringify(content)}`);
           chunk = [];
           currentTokenCount = 0;
           chunkIndex++;
@@ -448,7 +448,7 @@ async function generateFeedback() {
             2
           )}`,
         });
-        console.log(`user message created: ${lastMessage.id} with body : ${chunk}`);
+        console.log(`user message created: ${lastMessage.id} with body : ${JSON.stringify(chunk)}`);
       }
     }
     if (!lastMessage) {

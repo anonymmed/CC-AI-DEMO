@@ -288,6 +288,8 @@ async function generateFeedback() {
       instructions: assistantInstruction,
       tools: [{ type: "code_interpreter" }],
       model: "gpt-4o",
+      temperature: 0.5,
+      top_p: 1
     });
 
     console.log(`Assistant created: ${assistant.id}`);

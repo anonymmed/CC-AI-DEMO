@@ -7,19 +7,16 @@ async function postComments() {
 
     const feedbacksData = await fs.readFile("feedbacks.json", "utf8");
     const feedbacks = JSON.parse(feedbacksData);
-    console.log("feedback written in file is :", feedbacks);
     const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
     const pull_number = process.env.PR_NUMBER;
 
-    for (const {
-      filePath,
-      line,
-      commitId,
-      issueDescription,
-      fix,
-    } of feedbacks) {
+    for (const feedback of feedbacks) {
+      const { filePath, line, commitId, issueDescription, fix } = feedback;
+      if(!fix) {
+        console.log("Fix is not available for the issue: ", feedback);
+      }
       const body = `${issueDescription} \n  in line ${line} ${
-        fix.length > 0 ? "\n```csharp \n" + fix + "\n ```" : ""
+        fix && fix?.length > 0 ? "\n```csharp \n" + fix + "\n ```" : ""
       }`;
 
       try {

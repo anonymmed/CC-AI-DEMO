@@ -1,4 +1,8 @@
 name: ChatGPT Inline Code Review
+env:
+  PR_NUMBER: ${{ github.event.number }}
+  GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
 on:
   pull_request:
@@ -42,12 +46,7 @@ jobs:
 
     - name: Generate ChatGPT Feedback
       id: generate_feedback
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       run: node .github/scripts/generate_feedback.js
 
     - name: Post Inline Comments
-      env:
-        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
-        PR_NUMBER: ${{ github.event.number }}
       run: node .github/scripts/post_comments.js

@@ -1,10 +1,14 @@
 console.log("Post Comments script started");
-const fs = require("fs").promises;
+const fs = require("fs");
 const { Octokit } = require("@octokit/rest");
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 async function postComments() {
   try {
-    const feedbacksData = await fs.readFile("feedbacks.json", "utf8");
+    if(!fs.existsSync("feedbacks.json")) { 
+      console.log("No Feedback found. Exiting...");
+      exit(0);
+    }
+    const feedbacksData = await fs.promises.readFile("feedbacks.json", "utf8");
     const feedbacks = JSON.parse(feedbacksData);
     const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
     const pull_number = process.env.PR_NUMBER;

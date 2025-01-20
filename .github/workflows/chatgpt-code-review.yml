@@ -62,15 +62,6 @@ jobs:
       run: |
         git diff origin/${{ github.event.pull_request.base.ref }} -- '*.cs' '*.ts' '*.js' '*.sql' > pr_diff.txt
 
-    # Step 8: Generate ChatGPT Feedback
-    - name: Generate ChatGPT Feedback
-      id: generate_feedback
-      run: node .github/scripts/generate_feedback.js
-
-    # Step 10: Post Inline Comments
-    - name: Post Inline Comments
-      run: node .github/scripts/post_comments.js
-
     # Step 2: Restore PR Cache
     - name: Restore PR Cache
       id: pr-cache
@@ -80,6 +71,15 @@ jobs:
         key: ${{ runner.os }}-pr-cache-${{ github.event.pull_request.number }}
         restore-keys: |
           ${{ runner.os }}-pr-cache-
+
+    # Step 8: Generate ChatGPT Feedback
+    - name: Generate ChatGPT Feedback
+      id: generate_feedback
+      run: node .github/scripts/generate_feedback.js
+
+    # Step 10: Post Inline Comments
+    - name: Post Inline Comments
+      run: node .github/scripts/post_comments.js
 
     - name: Debug Restored Cache
       run: |

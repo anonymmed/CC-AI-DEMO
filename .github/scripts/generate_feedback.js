@@ -278,6 +278,40 @@ const MAX_TOKENS = 8000;
 const AVERAGE_LINE_CHARACTERS = 80;
 const CHARACTERS_PER_TOKEN = 4;
 const RESERVED_TOKENS = 1000;
+async function loadCache() {
+  try {
+    if (fs.existsSync(cachePath)) {
+      const cacheData = await fs.promises.readFile(cachePath, "utf8");
+      return JSON.parse(cacheData);
+    }
+  } catch (error) {
+    console.warn("Error loading cache file. Starting fresh.");
+  }
+  return {}; // Return an empty object if no cache exists
+}
+
+async function saveCache(cache) {
+  try {
+    await fs.promises.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf8");
+  } catch (error) {
+    console.error("Error saving cache:", error.message);
+  }
+}
+async function updateCache(prId, newData) {
+  try {
+    const cache = await loadCache();
+
+    // Merge existing data with new data for the PR
+    cache[prId] = {
+      ...(cache[prId] || {}), // Keep existing data
+      ...newData, // Add or overwrite with new data
+    };
+
+    await saveCache(cache);
+  } catch (error) {
+    console.error("Error updating cache:", error.message);
+  }
+}
 
 function sanitizeJsonString(rawString) {
   try {
@@ -309,7 +343,13 @@ async function generateFeedback() {
   try {
     // Load rules and diff
     const diff = await fs.promises.readFile("pr_diff.txt", "utf8");
+    // Determine current PR ID
+    const prId = process.env.PR_NUMBER || "default_pr";
+    console.log(`Processing PR: ${prId}`);
 
+    let assistantId = cache[prId]?.assistantId;
+    let threadId = cache[prId]?.threadId;
+    if(!assistantId) {
     // Step 1: Create an Assistant for this PR
     const assistant = await openai.beta.assistants.create({
       name: `PR Review Assistant`,
@@ -319,14 +359,28 @@ async function generateFeedback() {
       temperature: 0.5,
       top_p: 1,
     });
+    assistantId = assistant.id;
+    console.log(`Assistant created: ${assistantId}`);
+    } else {
+      console.log(`Reusing existing Assistant: ${assistantId}`);
+    }
 
-    console.log(`Assistant created: ${assistant.id}`);
-
-    // Step 2: Create a Thread for this PR
+    if(!threadId) { 
+          // Step 2: Create a Thread for this PR
     const thread = await openai.beta.threads.create();
+    threadId = thread.id;
     console.log(`Thread created: ${thread.id}`);
+    } else {
+      console.log(`Reusing existing Thread: ${threadId}`);
+    }
 
-    // Step 3: Process changes and create Messages
+    // Update cache with Assistant and Thread IDs
+    cache[prId] = { assistantId, threadId };
+    await updateCache(prId, {
+      assistantId: assistantId,
+      threadId: threadId,
+    });
+        // Step 3: Process changes and create Messages
     const changes = diff
       .split("diff --git")
       .slice(1)
@@ -414,7 +468,7 @@ async function generateFeedback() {
         console.log(`user message created: ${lastMessage.id}`);
       }
     }
-    if (!lastMessage) {
+    if (changes.length > 0 && !lastMessage) {
       console.error("No messages were created. Exiting...");
       process.exit(1);
     }

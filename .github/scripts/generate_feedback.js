@@ -236,6 +236,7 @@ generateFeedback();
 console.log("Generate Feedback script started");
 
 const fs = require("fs");
+const path = require("path");
 const { execSync } = require("child_process");
 const { OpenAI } = require("openai");
 const cachePath = "./.github/cache/cache.json";

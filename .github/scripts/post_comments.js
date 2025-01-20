@@ -9,11 +9,11 @@ async function postComments() {
     const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
     const pull_number = process.env.PR_NUMBER;
     for (const feedback of feedbacks) {
-      const { filePath, line, commitId, issueDescription, fix } = feedback;
+      const { filePath, line, commitId, issuesDescription, fix } = feedback;
       if (!fix) {
         console.log("Fix is not available for the issue: ", feedback);
       }
-      const body = `${issueDescription} \n  in line ${line} ${
+      const body = `${filePath}:${line} \n ${issuesDescription} \n ${
         fix && fix?.length > 0 ? "\n```csharp \n" + fix + "\n ```" : ""
       }`;
 

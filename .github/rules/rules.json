@@ -5,11 +5,6 @@
     "example": "/// <summary>\n/// Calculates the sum of two numbers.\n/// </summary>\n/// <param name=\"a\">The first number.</param>\n/// <param name=\"b\">The second number.</param>\n/// <returns>The sum of the numbers.</returns>"
   },
   {
-    "rule": "Maintain Empty Lines Between Functions",
-    "description": "All methods in a class must have a single blank line separating them to improve readability and maintain a consistent structure.",
-    "example": "public void Method1() { } \n\n public void Method2() { }"
-  },
-  {
     "rule": "SQL Query Best Practices",
     "description": "Avoid using `SELECT *` in SQL queries; specify the required columns explicitly.",
     "example": "SELECT id, name FROM Users;"

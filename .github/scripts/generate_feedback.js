@@ -401,7 +401,8 @@ async function generateFeedback() {
       })
       .filter(Boolean);
       if(changes.length === 0) { 
-        console.log('No changes found. Exiting...');
+        console.log('No changes found. saving cache and exiting...');
+        await saveCache(cache);
         process.exit(0);
       }
 

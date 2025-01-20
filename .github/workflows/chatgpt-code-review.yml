@@ -35,16 +35,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pr-cache-
 
-    - name: Debug Restored Cache
-      run: |
-        if [ -f .github/cache/cache.json ]; then
-          echo "Cache file exists after restore:"
-          cat .github/cache/cache.json
-        else
-          echo "Cache file does not exist after restore."
-        fi
-
-
     # Step 3: Fetch PR Branch
     - name: Fetch PR Branch
       run: |
@@ -97,3 +87,12 @@ jobs:
     # Step 10: Post Inline Comments
     - name: Post Inline Comments
       run: node .github/scripts/post_comments.js
+
+    - name: Debug Restored Cache
+      run: |
+        if [ -f .github/cache/cache.json ]; then
+          echo "Cache file exists after restore:"
+          cat .github/cache/cache.json
+        else
+          echo "Cache file does not exist after restore."
+        fi

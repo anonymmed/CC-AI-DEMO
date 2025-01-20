@@ -360,43 +360,46 @@ async function generateFeedback() {
     }
     // Step 3: Process changes and create Messages
     const changes = diff
-      .split("diff --git")
-      .slice(1)
-      .map((change) => {
-        const lines = change.split("\n");
-        const filePathMatch = lines[0]?.match(/b\/(\S+)/);
-        const filePath = filePathMatch ? filePathMatch[1] : null;
-
-        if (
-          !filePath ||
-          filePath.includes("workflows/") ||
-          filePath.includes("rules/") ||
-          filePath.includes("scripts/")
-        ) {
-          return null; // Skip invalid files
-        }
-
-        const header = lines.find((line) => line.startsWith("@@"));
-        const position = header
-          ? parseInt(header.match(/\+([0-9]+)/)?.[1], 10)
-          : null;
-
-        const addedLines = [];
-        let lineCounter = position || 0;
-
-        for (const line of lines) {
-          if (line.startsWith("+") && !line.startsWith("+++")) {
+    .split("diff --git")
+    .slice(1)
+    .map((change) => {
+      const lines = change.trim().split("\n");
+      const filePathMatch = lines[0]?.match(/b\/(\S+)/);
+      const filePath = filePathMatch ? filePathMatch[1] : null;
+  
+      if (!filePath) {
+        return null; // Skip invalid file paths
+      }
+  
+      const addedLines = [];
+      let lineCounter = null; // Tracks the current line number for added lines
+  
+      lines.forEach((line) => {
+        // Detect hunk headers to reset lineCounter
+        const hunkHeaderMatch = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+        if (hunkHeaderMatch) {
+          lineCounter = parseInt(hunkHeaderMatch[1], 10); // Reset to the starting line of this hunk
+        } else if (line.startsWith("+") && !line.startsWith("+++")) {
+          // Process added lines
+          if (lineCounter !== null) {
             addedLines.push({
               lineNumber: lineCounter,
-              lineDiff: line.slice(1),
+              lineDiff: line.slice(1), // Exclude the '+' symbol
             });
+            lineCounter++; // Increment for the next added line
+          }
+        } else if (!line.startsWith("-")) {
+          // Increment lineCounter for unchanged lines (skip removals)
+          if (lineCounter !== null) {
             lineCounter++;
           }
         }
+      });
+  
+      return addedLines.length ? { filePath, addedLines } : null;
+    })
+    .filter(Boolean); // Remove null values
 
-        return addedLines.length ? { filePath, addedLines } : null;
-      })
-      .filter(Boolean);
       if(changes.length === 0) { 
         console.log('No changes found. saving cache and exiting...');
         await saveCache(cache);

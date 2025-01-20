@@ -459,7 +459,7 @@ async function generateFeedback() {
     // Step 5: Create a Run
     console.log(`Creating run for thread ${threadId}...`);
     const run = await openai.beta.threads.runs.createAndPoll(threadId, {
-      assistant_id: assistant.id,
+      assistant_id: assistantId,
     });
 
     if (!run || run.status !== "completed") {

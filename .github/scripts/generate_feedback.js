@@ -280,12 +280,12 @@ const AVERAGE_LINE_CHARACTERS = 80;
 const CHARACTERS_PER_TOKEN = 4;
 const RESERVED_TOKENS = 1000;
 async function loadCache() {
-  const cacheData = await fs.readFile(cachePath, "utf8");
+  const cacheData = await fs.promises.readFile(cachePath, "utf8");
   return JSON.parse(cacheData);
 }
 
 async function saveCache(cache) {
-  await fs.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf8");
+  await fs.promises.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf8");
   console.log("Cache saved successfully.");
 }
 
@@ -530,6 +530,7 @@ async function generateFeedback() {
       "utf8"
     );
     console.log("Feedbacks written to feedbacks.json: ", updatedFeedbacks);
+    await saveCache(cache);
   } catch (error) {
     console.error("Error generating feedback:", error);
     process.exit(1);

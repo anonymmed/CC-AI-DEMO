@@ -471,7 +471,7 @@ async function generateFeedback() {
         const originalLineMatch = blameOutput.split("\n")[0].split(" ")[1];
 
         const originalLine = originalLineMatch
-          ? parseInt(originalLineMatch[1], 10)
+          ? parseInt(originalLineMatch, 10)
           : feedback.line;
 
         console.log(`line : ${feedback.line} mapped to the original line ${originalLine}`);

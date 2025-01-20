@@ -6,7 +6,7 @@ async function postComments() {
   try {
     if(!fs.existsSync("feedbacks.json")) { 
       console.log("No Feedback found. Exiting...");
-      exit(0);
+      process.exit(0);
     }
     const feedbacksData = await fs.promises.readFile("feedbacks.json", "utf8");
     const feedbacks = JSON.parse(feedbacksData);

@@ -448,7 +448,7 @@ async function generateFeedback() {
             2
           )}`,
         });
-        console.log(`user message created: ${lastMessage.id}`);
+        console.log(`user message created: ${lastMessage.id} with body : ${chunk}`);
       }
     }
     if (!lastMessage) {

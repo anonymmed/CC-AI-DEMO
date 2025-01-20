@@ -36,7 +36,7 @@ namespace CodeTest
             throw new KeyNotFoundException(nameof("a"));
         }
 
-        public void HandleError(string param)
+        public void HandleError(str param)
         {
             if (string.IsNullOrEmpty(param))
             {

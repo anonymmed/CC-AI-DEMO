@@ -8,11 +8,13 @@ namespace CodeTest
         {
             return a + b; 
         }
+
         public async Task FetchDataFromDatabaseAsync()
         {
             string query = "SELECT * FROM Users";
             Console.WriteLine(query);
         }
+
         public string ConcatStrings(string str1, string str2)
         {
             return str1 + str2;
@@ -22,15 +24,24 @@ namespace CodeTest
         {
             Console.WriteLine("Hello World");
         }
+
         public string GetServiceData()
         {
             var readOnlyService = new ReadOnlyService();
             return readOnlyService.GetData();
         }
 
-        public void HandleError(str a)
+        public void handleError(str a)
         {
             throw new KeyNotFoundException(nameof("a"));
+        }
+
+        public void HandleError(string param)
+        {
+            if (string.IsNullOrEmpty(param))
+            {
+                throw new Exception(nameof("param"));
+            }
         }
 
         public void ValidateInput(string param)

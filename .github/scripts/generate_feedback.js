@@ -401,7 +401,7 @@ async function generateFeedback() {
         console.log('No changes found. saving cache and exiting...');
         await saveCache(cache);
         process.exit(0);
-      }
+      } 
 
     // Step 4: Add Messages for each chunk
     let chunkIndex = 1;
@@ -429,7 +429,7 @@ async function generateFeedback() {
               2
             )}`,
           });
-          console.log(`user message created: ${lastMessage.id}`);
+          console.log(`user message created: ${lastMessage.id} with body : ${content}`);
           chunk = [];
           currentTokenCount = 0;
           chunkIndex++;

@@ -286,7 +286,10 @@ async function loadCache() {
 
 async function saveCache(cache) {
   await fs.promises.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf8");
-  console.log("Cache saved successfully.");
+  console.log("saving cache...");
+  console.log(`cache after: ${JSON.stringify(cache)}`);
+  const loadedCache = await loadCache();
+  console.log("loaded cache after : ", loadedCache);
 }
 
 function sanitizeJsonString(rawString) {

@@ -277,6 +277,20 @@ const AVERAGE_LINE_CHARACTERS = 80;
 const CHARACTERS_PER_TOKEN = 4;
 const RESERVED_TOKENS = 1000;
 
+function sanitizeJsonString(rawString) {
+  // Regex to match any code block, e.g., ```json, ```, or other formats
+  const codeBlockRegex = /^```(?:\w+)?\s*([\s\S]*?)\s*```$/;
+
+  const match = rawString.match(codeBlockRegex);
+  if (match) {
+    // Extract the JSON content inside the code block
+    return match[1].trim();
+  }
+
+  // If no code block markers are found, assume it's plain JSON
+  return rawString.trim();
+}
+
 async function generateFeedback() {
   try {
     // Load rules and diff
@@ -419,9 +433,9 @@ async function generateFeedback() {
     const feedbacks = assistantMessages.data
       .filter((message) => message.role === "assistant")
       .map((message) => message.content[0].text.value);
-
-      console.log("GPT assistant feedbacks:", feedbacks);
-    await fs.promises.writeFile("feedbacks.json", JSON.stringify(feedbacks, null, 2), "utf8");
+      const sanitizedFeedback = sanitizeJsonString(feedbacks);
+      console.log("GPT assistant feedbacks:", sanitizedFeedback);
+    await fs.promises.writeFile("feedbacks.json", JSON.stringify(sanitizedFeedback, null, 2), "utf8");
     console.log("Feedbacks written to feedbacks.json");
   } catch (error) {
     console.error("Error generating feedback:", error);

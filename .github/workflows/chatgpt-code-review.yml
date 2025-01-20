@@ -57,9 +57,12 @@ jobs:
     # Step 6: Initialize Cache if Missing
     - name: Initialize Cache if Missing
       run: |
-        if [ ! -f .github/cache/cache.json ]; then
+        if [ ! -f .github/cache/cache.json ] || [ ! -s .github/cache/cache.json ]; then
+          echo "Cache file not found or empty. Initializing new cache."
           mkdir -p .github/cache
           echo "{}" > .github/cache/cache.json
+        else
+          echo "Cache file exists and is not empty. Skipping initialization."
         fi
 
     # Step 7: Fetch PR Diff

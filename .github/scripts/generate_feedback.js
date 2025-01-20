@@ -358,14 +358,7 @@ async function generateFeedback() {
     } else {
       console.log(`Reusing existing Thread: ${threadId}`);
     }
-
-    // Update cache with Assistant and Thread IDs
-    cache[prId] = { assistantId, threadId };
-    await updateCache(prId, {
-      assistantId: assistantId,
-      threadId: threadId,
-    });
-        // Step 3: Process changes and create Messages
+    // Step 3: Process changes and create Messages
     const changes = diff
       .split("diff --git")
       .slice(1)

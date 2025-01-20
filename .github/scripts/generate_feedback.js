@@ -257,7 +257,6 @@ ${JSON.stringify(rules)}
 [
   {
     "filePath": "<file_path>",
-    "commitId": "<commit_id_specific_to_the_line_that_have_issue>",
     "line": <line_number>,
     "issuesDescription": "<short_description_about_the_violation>",
     "fix": "<code_snippet_to_fix_the_violation>"
@@ -472,12 +471,37 @@ async function generateFeedback() {
         }
       })
       .filter(Boolean); // Remove null values
+
+    // Map feedbacks to update with original line numbers
+    const updatedFeedbacks = feedbacks.map((feedback) => {
+      try {
+        const blameOutput = execSync(
+          `git blame -L ${feedback.line},${feedback.line} --line-porcelain HEAD -- ${feedback.filePath}`
+        )
+          .toString()
+          .trim();
+        const commitHash = blameOutput.split("\n")[0].split(" ")[0]; // First field is the commit hash
+        const originalLineMatch = blameOutput.match(/^\s*\d+\s+(\d+)/m);
+        const originalLine = originalLineMatch
+          ? parseInt(originalLineMatch[1], 10)
+          : feedback.line;
+
+        return { ...feedback, line: originalLine, commitId: commitHash }; // Update with line and commit hash
+      } catch (error) {
+        console.error(
+          `Failed to get original line number for ${feedback.filePath}:${feedback.line}`,
+          error.message
+        );
+        return feedback; // Return unchanged feedback on error
+      }
+    });
+
     await fs.promises.writeFile(
       "feedbacks.json",
-      JSON.stringify(feedbacks, null, 2),
+      JSON.stringify(updatedFeedbacks, null, 2),
       "utf8"
     );
-    console.log("Feedbacks written to feedbacks.json: ", feedbacks);
+    console.log("Feedbacks written to feedbacks.json: ", updatedFeedbacks);
   } catch (error) {
     console.error("Error generating feedback:", error);
     process.exit(1);

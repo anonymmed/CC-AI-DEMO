@@ -13,7 +13,7 @@ async function postComments() {
       if (!fix) {
         console.log("Fix is not available for the issue: ", feedback);
       }
-      const body = `${filePath}:${line} \n ${issuesDescription} \n ${
+      const body = `> **${filePath}:${line}** \n ${issuesDescription} \n ${
         fix && fix?.length > 0 ? "\n```csharp \n" + fix + "\n ```" : ""
       }`;
 

@@ -37,7 +37,7 @@ jobs:
           ${{ runner.os }}-node-
 
     - name: Install Dependencies
-      run: npm install openai @octokit/rest@18.12.0 esprima
+      run: npm install openai @octokit/rest@18.12.0
 
     - name: Fetch PR Diff
       id: get_diff

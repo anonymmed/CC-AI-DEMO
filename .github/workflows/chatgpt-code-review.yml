@@ -82,19 +82,6 @@ jobs:
       id: generate_feedback
       run: node .github/scripts/generate_feedback.js
 
-    # Step 9: Save Updated PR Cache (using Artifacts)
-    - name: Save Updated PR Cache
-      id: save-pr-cache
-      run: |
-        curl --silent \
-          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Accept: application/vnd.github.v3+json" \
-          -X POST \
-          -F "name=pr-cache-${{ github.event.pull_request.number }}" \
-          -F "file=@.github/cache/cache.json" \
-          "https://api.github.com/repos/${{ github.repository }}/actions/artifacts"
-        echo "Cache saved for PR #${{ github.event.pull_request.number }}"
-
     # Step 10: Post Inline Comments
     - name: Post Inline Comments
       run: node .github/scripts/post_comments.js

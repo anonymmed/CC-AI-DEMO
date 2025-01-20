@@ -43,18 +43,6 @@ jobs:
     # Step 5: Install Dependencies
     - name: Install Dependencies
       run: npm install openai @octokit/rest@18.12.0
-
-    # Step 6: Initialize Cache if Missing
-    - name: Initialize Cache if Missing
-      run: |
-        if [ ! -f .github/cache/cache.json ] || [ ! -s .github/cache/cache.json ]; then
-          echo "Cache file not found or empty. Initializing new cache."
-          mkdir -p .github/cache
-          echo "{}" > .github/cache/cache.json
-        else
-          echo "Cache file exists and contains data:"
-          cat .github/cache/cache.json
-        fi
   
     # Step 7: Fetch PR Diff
     - name: Fetch PR Diff
@@ -72,6 +60,17 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pr-cache-
 
+    # Step 6: Initialize Cache if Missing
+    - name: Initialize Cache if Missing
+      run: |
+        if [ ! -f .github/cache/cache.json ] || [ ! -s .github/cache/cache.json ]; then
+          echo "Cache file not found or empty. Initializing new cache."
+          mkdir -p .github/cache
+          echo "{}" > .github/cache/cache.json
+        else
+          echo "Cache file exists and contains data:"
+          cat .github/cache/cache.json
+        fi
     # Step 8: Generate ChatGPT Feedback
     - name: Generate ChatGPT Feedback
       id: generate_feedback

@@ -459,7 +459,7 @@ async function generateFeedback() {
       JSON.stringify(feedbacks, null, 2),
       "utf8"
     );
-    console.log("Feedbacks written to feedbacks.json");
+    console.log("Feedbacks written to feedbacks.json: ", feedbacks);
   } catch (error) {
     console.error("Error generating feedback:", error);
     process.exit(1);

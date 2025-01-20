@@ -9,6 +9,7 @@ async function postComments() {
     const feedbacks = JSON.parse(feedbacksData);
     const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
     const pull_number = process.env.PR_NUMBER;
+    console.log("Parsed Feedbacks:", feedbacks);
 
     for (const feedback of feedbacks) {
       const { filePath, line, commitId, issueDescription, fix } = feedback;

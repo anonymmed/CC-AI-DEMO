@@ -7,7 +7,7 @@ env:
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
 
 permissions: 
   contents: write
@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   code_review:
+    if: github.event.pull_request.merged != true && github.event.action != 'closed'  # Run only for non-closed PRs
     runs-on: ubuntu-latest
 
     steps:
@@ -79,3 +80,29 @@ jobs:
         else
           echo "Cache file does not exist after restore."
         fi
+
+  # Cleanup Job
+  cleanup:
+    if: github.event.action == 'closed'  # Run only when the PR is closed
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Restore PR Cache
+      uses: actions/cache@v3
+      with:
+        path: .github/cache/cache.json
+        key: ${{ runner.os }}-pr-cache-${{ github.event.pull_request.number }}
+        restore-keys: |
+          ${{ runner.os }}-pr-cache-
+
+    - name: Cleanup Assistant and Thread
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: node .github/scripts/cleanup_resources.js
+
+    - name: Delete PR Cache
+      run: rm -rf .github/cache/cache.json

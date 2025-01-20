@@ -346,6 +346,8 @@ async function generateFeedback() {
     // Determine current PR ID
     const prId = process.env.PR_NUMBER || "default_pr";
     console.log(`Processing PR: ${prId}`);
+    
+    const cache = await loadCache();
 
     let assistantId = cache[prId]?.assistantId;
     let threadId = cache[prId]?.threadId;

@@ -280,7 +280,6 @@ const CHARACTERS_PER_TOKEN = 4;
 const RESERVED_TOKENS = 1000;
 async function loadCache() {
   const cacheData = await fs.promises.readFile(cachePath, "utf8");
-  console.log("Loaded cache:", cacheData);
   return JSON.parse(cacheData);
 }
 

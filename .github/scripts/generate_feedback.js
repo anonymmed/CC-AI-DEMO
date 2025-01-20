@@ -278,17 +278,29 @@ const CHARACTERS_PER_TOKEN = 4;
 const RESERVED_TOKENS = 1000;
 
 function sanitizeJsonString(rawString) {
-  // Regex to match any code block, e.g., ```json, ```, or other formats
-  const codeBlockRegex = /^```(?:\w+)?\s*([\s\S]*?)\s*```$/;
+  try {
+    // Return an empty string if rawString is undefined, null, or not a string
+    if (typeof rawString !== "string") {
+      console.warn(
+        "sanitizeJsonString: Received non-string input. Skipping sanitization."
+      );
+      return "";
+    }
+    // Regex to match any code block, e.g., ```json, ```, or other formats
+    const codeBlockRegex = /^```(?:\w+)?\s*([\s\S]*?)\s*```$/;
 
-  const match = rawString.match(codeBlockRegex);
-  if (match) {
-    // Extract the JSON content inside the code block
-    return match[1].trim();
+    const match = rawString.match(codeBlockRegex);
+    if (match) {
+      // Extract the JSON content inside the code block
+      return match[1].trim();
+    }
+
+    // If no code block markers are found, assume it's plain JSON
+    return rawString.trim();
+  } catch (error) {
+    console.error("sanitizeJsonString: Error sanitizing JSON string:", error);
+    return "";
   }
-
-  // If no code block markers are found, assume it's plain JSON
-  return rawString.trim();
 }
 
 async function generateFeedback() {
@@ -303,7 +315,7 @@ async function generateFeedback() {
       tools: [{ type: "code_interpreter" }],
       model: "gpt-4o",
       temperature: 0.5,
-      top_p: 1
+      top_p: 1,
     });
 
     console.log(`Assistant created: ${assistant.id}`);
@@ -374,10 +386,14 @@ async function generateFeedback() {
 
       for (const line of addedLines) {
         const lineTokenEstimate = Math.ceil(
-          (line.lineDiff.length || AVERAGE_LINE_CHARACTERS) / CHARACTERS_PER_TOKEN
+          (line.lineDiff.length || AVERAGE_LINE_CHARACTERS) /
+            CHARACTERS_PER_TOKEN
         );
 
-        if (currentTokenCount + lineTokenEstimate > MAX_TOKENS - RESERVED_TOKENS) {
+        if (
+          currentTokenCount + lineTokenEstimate >
+          MAX_TOKENS - RESERVED_TOKENS
+        ) {
           console.log(`Adding chunk ${chunkIndex} for file ${filePath}...`);
           lastMessage = await openai.beta.threads.messages.create(thread.id, {
             role: "user",
@@ -408,9 +424,9 @@ async function generateFeedback() {
         });
       }
     }
-    if(!lastMessage) {
-        console.error("No messages were created. Exiting...");
-        process.exit(1);
+    if (!lastMessage) {
+      console.error("No messages were created. Exiting...");
+      process.exit(1);
     }
     const lastMessageIdBeforeRun = lastMessage.id;
     // Step 5: Create a Run
@@ -425,17 +441,24 @@ async function generateFeedback() {
     }
 
     // Step 6: Retrieve and save feedback
-    const assistantMessages = await openai.beta.threads.messages.list(thread.id, {
+    const assistantMessages = await openai.beta.threads.messages.list(
+      thread.id,
+      {
         order: "desc", // Ensure messages are retrieved in chronological order
         before: lastMessageIdBeforeRun, // Only retrieve messages after the last user message
-      });
+      }
+    );
 
     const feedbacks = assistantMessages.data
       .filter((message) => message.role === "assistant")
-      .map((message) => message.content[0].text.value);
-      const sanitizedFeedback = sanitizeJsonString(feedbacks);
-      console.log("GPT assistant feedbacks:", sanitizedFeedback);
-    await fs.promises.writeFile("feedbacks.json", JSON.stringify(sanitizedFeedback, null, 2), "utf8");
+      .map((message) => sanitizeJsonString(message.content[0].text.value));
+
+    console.log("GPT assistant sanitized feedbacks:", feedbacks);
+    await fs.promises.writeFile(
+      "feedbacks.json",
+      JSON.stringify(sanitizedFeedback, null, 2),
+      "utf8"
+    );
     console.log("Feedbacks written to feedbacks.json");
   } catch (error) {
     console.error("Error generating feedback:", error);

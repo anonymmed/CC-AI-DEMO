@@ -256,6 +256,8 @@ ${JSON.stringify(rules)}
 ### Respond in This JSON Format:
 [
   {
+    "filePath": "<file_path>",
+    "commitId": "<commit_id_specific_to_the_line_that_have_issue>",
     "line": <line_number>,
     "issuesDescription": "<short_description_about_the_violation>",
     "fix": "<code_snippet_to_fix_the_violation>"
